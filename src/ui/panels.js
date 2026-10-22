@@ -216,30 +216,28 @@ export function renderVerdict() {
   else {
     if (shot.kind === "obscured") { big = "NOT A VALID TARGET — OBSCURED"; cls = "v-obsc";
       why.push(`heavy terrain ${o.id} crosses a cover line more than ${fmtIn(RULES.obscure.fromShooter)}" from the shooter and ${fmtIn(RULES.obscure.fromTarget)}" from the target`); }
-    else if (shot.kind === "concealed") { big = "NOT A VALID TARGET"; cls = "v-novis"; why.push(`conceal order + in cover behind ${coverName(c)}`); }
+    else if (shot.kind === "concealed") { big = "NOT A VALID TARGET"; cls = "v-novis"; why.push(`conceal order + in cover behind ${c.id}`); }
     else if (shot.kind === "engaged") { big = "NOT A VALID TARGET — IN MELEE"; cls = "v-novis";
       why.push(`friendly ${shot.engagedBy.name} is within ${fmtIn(CTRL)}" of it`); }
-    else if (shot.kind === "cover") { big = "VALID — IN COVER"; cls = "v-cover"; why.push(`${coverName(c)} intervenes within ${fmtIn(RULES.cover.range)}" of target → cover save`); }
+    else if (shot.kind === "cover") { big = "VALID — IN COVER"; cls = "v-cover"; why.push(`${c.id} intervenes within ${fmtIn(RULES.cover.range)}" of target → cover save`); }
     else { big = "VALID TARGET"; cls = "v-valid"; why.push("clear shot — no cover, not obscured"); }
     if (shot.vantage) why.push(`conceal order, but shot down from a Vantage Point over light cover: counts as Engage, keeps its cover save`);
     if (shot.indirect) why.push(`conceal order, but the Indirect weapon ignores cover for targeting: cover save still applies`);
     if (RULES.orders && state.target.order === "conceal" && !c) why.push("conceal order but no cover — still targetable");
-    if (shot.kind === "engaged" && c) why.push(`in cover behind ${coverName(c)}`);
+    if (shot.kind === "engaged" && c) why.push(`in cover behind ${c.id}`);
     if (RULES.cover.voidWithin > 0 && s.gap <= RULES.cover.voidWithin) why.push(`within ${fmtIn(RULES.cover.voidWithin)}": cover is void`);
   }
   why.push(`range ${Math.max(0, s.gap).toFixed(1)}" base-to-base`);
   v.innerHTML = `<div class="big ${cls}">${big}</div><div class="why">${state.sel.name} → ${state.target.name} · ${why.join(" · ")}</div>`;
 }
-// what gives cover: a terrain piece by name, or another operative's base
-const coverName = c => c.kind === "operative" ? `${c.id}'s base` : c.id;
 // one short reason per judgement, for the valid-shots list and the log
 function shotWhy(s) {
   const c = s.sight.coverBy, o = s.sight.obscBy;
   const exc = s.vantage ? "; on Conceal, but shot from a Vantage Point" : s.indirect ? "; on Conceal, but the weapon is Indirect" : "";
   if (s.kind === "clear") return "no cover, not obscured";
-  if (s.kind === "cover") return `${coverName(c)} within ${fmtIn(RULES.cover.range)}″ of it${exc}`;
+  if (s.kind === "cover") return `${c.id} within ${fmtIn(RULES.cover.range)}″ of it${exc}`;
   if (s.kind === "obscured") return `heavy terrain ${o.id} in the way`;
-  if (s.kind === "concealed") return `on Conceal, in cover (${coverName(c)})`;
+  if (s.kind === "concealed") return `on Conceal, in cover (${c.id})`;
   if (s.kind === "engaged") return `in melee with ${s.engagedBy.name}`;
   return "every line blocked by walls or heavy terrain";
 }

@@ -155,7 +155,7 @@ Theta* routes hug rounded corners in several short legs, and each one costs a fu
 
 ## Sight (`engine/sight.js`)
 
-`sightAnalysis(a, b, bases)` works like this (Kill Team 2024 cover lines: any one point of the
+`sightAnalysis(a, b)` works like this (Kill Team 2024 cover lines: any one point of the
 attacker's base to every part of the target's base, drawn straight through terrain). The app
 is top-down, so "visible" stays a base-to-base check rather than one from the shooter's head
 to the target's model.
@@ -166,7 +166,7 @@ to the target's model.
    Not visible ends the analysis. `canSee(a, b)` is this step on its own.
 2. Cover lines start only from a base point that can see the target (at least one clear
    line). Of those, the attacker picks the one that suits it best: **not obscured** first, then
-   **not in cover**, then in cover from light terrain or bases only rather than heavy terrain
+   **not in cover**, then in cover from light terrain only rather than heavy terrain
    (that matters for Vantage, below). From each point every cover line (blocked ones included)
    is walked through every cell:
    - **Obscured:** a crossed wall or heavy cell more than `obscure.fromShooter` from the
@@ -174,17 +174,14 @@ to the target's model.
      1" and 2"). Light never obscures. Infinity has no obscuring (`obscure: null`).
    - **Cover:** a crossed wall, heavy or light cell within `cover.range` of the target's base
      edge (Kill Team: 1"), when the operatives are more than `cover.voidWithin` apart
-     (Kill Team: 2"). The base of another operative in `bases` counts too: where a line runs
-     through that base, the point of it nearest the target must be within range. Bases only
-     give cover; they never block sight or obscure. `hardCover` says whether any of the cover
-     came from a wall or heavy terrain.
+     (Kill Team: 2"). Other operatives never give cover, block sight or obscure. `hardCover`
+     says whether any of the cover came from a wall or heavy terrain.
 
    Points stop early once they can't beat the best so far, and the search stops at the first
    point with neither.
 3. The chosen point is walked once more to report, per judgement, the crossed cells' bounding
    box for the feature closest to the target (what the UI highlights; its `id` names the piece),
-   the crossing point `at`, and the cover `line` that decides it. Cover from a base reports
-   `kind: "operative"`, the operative as `op`, and the base's box.
+   the crossing point `at`, and the cover `line` that decides it.
 
 ## Valid shots (`engine/shots.js`)
 
@@ -193,13 +190,11 @@ plus the deciding line (none for `hidden`: nothing to draw one to):
 
 1. `hidden`: not visible.
 2. `obscured`: not a valid target.
-3. Cover, then the order. The bases passed to `sightAnalysis` are every other living operative
-   (either side, not the shooter or the target) within cover range of the target that the eye
-   can see (`canSee`). A target on Conceal in cover is `concealed`, not a valid target, with
+3. Cover (terrain only), then the order. A target on Conceal in cover is `concealed`, not a valid target, with
    two exceptions that make it valid for this shot. It still gets its cover save:
    - **Vantage** (`vantage: true` in the result): the shooter stands on a Vantage Point at
-     least `RULES.vantage.rise` (2") above the target, and the cover is only light terrain or
-     bases (`!hardCover`). Heights come from `standing(p)`. TODO: the engine has no model
+     least `RULES.vantage.rise` (2") above the target, and the cover is only light terrain
+     (`!hardCover`). Heights come from `standing(p)`. TODO: the engine has no model
      heights or terrain traits yet, so this only reads `z` / `vantage` set on the eye or target
      and is 0 / false otherwise.
    - **Indirect** (`indirect: true`): the shooter's weapon (`eye.weapon`, a `WPN` key or a weapon

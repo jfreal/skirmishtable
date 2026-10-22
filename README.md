@@ -62,7 +62,7 @@ panel. The table (terrain grid, fit map, routing, sight geometry, 3D view) never
 | move actions | Reposition 6″, Dash 3″, Charge 8″ | Move 4″ + second Move 2″ | Advance 6″, Sprint 4″, Assault 8″ |
 | which moves can climb | Reposition, Charge | both | Advance, Assault |
 | climb cost | height up (≥2″) + drop past 2″ | height up, drop free | flat 3″ up + 1″ down |
-| cover | terrain or other operatives within 1″ of target, void within 2″ | terrain or operatives within ½″ | terrain or operatives within 2″, void within 3″ |
+| cover (terrain only, never other operatives) | terrain within 1″ of target, void within 2″ | terrain within ½″ | terrain within 2″, void within 3″ |
 | obscured (not a valid target) | sight-blockers >1″ from shooter and >2″ from target | — | sight-blockers >3″ from both |
 | orders | Conceal / Engage | — | — |
 
