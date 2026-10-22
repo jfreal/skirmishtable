@@ -301,6 +301,7 @@ function targetLines(g) {
   g.add(new THREE.LineSegments(geo, new THREE.LineBasicMaterial({vertexColors: true, transparent: true, opacity: 0.8})));
 }
 const ENGAGE_HEX = parseInt(ENGAGE_COL.slice(1), 16);
+const TRAIL_HEX = 0xe8822e;   // faint orange: the base's path and its outline per increment
 // the red ring round a model in (or about to be in) engagement range
 function engageRing(g, x, y) {
   const ring = new THREE.Mesh(torus(BASE_R + 0.34, 0.09, 40), flatMat(ENGAGE_HEX));
@@ -318,8 +319,26 @@ export function sync3DOverlay() {
     const lift = 0.07;
     if (d.path) {
       const colorOf = t => t === "dash" ? 0x8d5fa8 : t === "charge" ? ENGAGE_HEX : 0x2a4f9e;
+      // the ground the base sweeps (as wide as the base) and a faint base outline at every
+      // increment, as on the 2D map
+      const steps = chopIncrements(d.path), R = BASE_R;
+      for (const st of steps) {
+        if (!st.climb) {
+          const L = Math.hypot(st.x2 - st.x1, st.y2 - st.y1);
+          if (L > 1e-6) {
+            const band = new THREE.Mesh(geo("trailbox", () => new THREE.PlaneGeometry(1, 1)), rangeMat(TRAIL_HEX, 0.16));
+            band.scale.set(2 * R, L, 1);
+            band.rotation.set(-Math.PI / 2, Math.atan2(st.x2 - st.x1, st.y2 - st.y1), 0, "YXZ");   // lay flat, then turn along the leg
+            band.position.set((st.x1 + st.x2) / 2, 0.025, (st.y1 + st.y2) / 2);
+            g.add(band);
+          }
+        }
+        const out = new THREE.Mesh(geo(`range ${R}`, () => new THREE.RingGeometry(R - 0.035, R + 0.035, 96)), rangeMat(TRAIL_HEX, 0.6));
+        out.rotation.x = -Math.PI / 2; out.position.set(st.x2, 0.03, st.y2);
+        g.add(out);
+      }
       let inch = 0;
-      for (const st of chopIncrements(d.path)) {
+      for (const st of steps) {
         inch += st.cost;
         const hex = inch <= d.primAllow + 1e-9 || !d.p2 ? colorOf(d.p1.type) : colorOf(d.p2.type);
         if (st.climb) {

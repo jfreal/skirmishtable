@@ -213,6 +213,7 @@ function engageRing(parent, x, y) {
   el("circle", {cx:px(x), cy:px(y), r:px(BASE_R)+12, fill:"none", stroke:ENGAGE_COL, "stroke-width":2.5,
     class:"engpulse", "data-engaged":"1", "pointer-events":"none"}, parent);
 }
+const BASE_TRAIL = "#e8822e";   // faint orange: the base's path and its outline per increment
 function renderOps() {
   gOps.innerHTML = "";
   // markers placed from the Ops panel (grenades, mission tokens), under the operatives
@@ -355,6 +356,15 @@ export function renderOverlay(cursor) {
       const chained = state.drag.total > state.drag.primAllow + 1e-9 && state.drag.p2;
       // the route as its actual movement increments: straight steps, turns between steps
       const steps = chopIncrements(state.drag.path);
+      // the ground the base sweeps (as wide as the base) and a faint base outline at every
+      // increment, so it's clear how the base itself gets round terrain and other models
+      const swept = el("g", {opacity:0.9}, gOverlay);
+      for (const st of steps) if (!st.climb)
+        el("line", {x1:px(st.x1), y1:px(st.y1), x2:px(st.x2), y2:px(st.y2), stroke:BASE_TRAIL,
+          "stroke-width":px(2 * BASE_R), "stroke-linecap":"round", opacity:0.13}, swept);
+      for (const st of steps)
+        el("circle", {cx:px(st.x2), cy:px(st.y2), r:px(BASE_R), fill:"none", stroke:BASE_TRAIL,
+          "stroke-width":1.2, opacity:0.55, "data-trail":"1"}, swept);
       let inch = 0;
       for (const st of steps) {
         inch += st.cost;
