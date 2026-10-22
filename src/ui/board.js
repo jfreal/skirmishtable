@@ -13,7 +13,7 @@ import { BH, BW, DECOR, DROPZONES, MAP, OBJECTIVES, OPS, OVERHEAD, TERRAIN } fro
 import { pump } from '../net/sync.js';
 import { NS, el, svg } from './dom.js';
 import { RULES, fmtIn, moveLabel } from '../rules/index.js';
-import { renderCard, renderShots, renderVerdict, tray } from './panels.js';
+import { refreshSight, renderCard, renderShots, renderVerdict, tray } from './panels.js';
 import { opsState } from './ops.js';
 import { TTS_OPS } from '../data/tts-ops.js';
 export const MARKER_R = 0.45;   // marker tokens on the table (about 23mm across)
@@ -414,6 +414,7 @@ export function renderTray() {
   document.getElementById("vpb").textContent = tray.vp[1];
 }
 export function renderAll(cursor) {
+  refreshSight();               // the chosen target's call, as things stand after this change
   renderObjectives(); renderOps(); renderOverlay(cursor); renderTray(); renderCard(); renderVerdict();
   if (view3D && three) sync3DOps();
   pump();                       // online: send the game if this render follows a change
