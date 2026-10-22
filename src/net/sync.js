@@ -7,14 +7,13 @@
  */
 import { state } from '../state.js';
 import { TTS_TEAMS } from '../data/tts-teams.js';
-import { sightAnalysis } from '../engine/sight.js';
 import { MAP, MAPS, OPS } from '../engine/world.js';
 import { RULES, RULESETS, setRuleset } from '../rules/index.js';
 import { renderAll } from '../ui/board.js';
 import { loadMap, renderRuleButtons } from '../ui/controls.js';
 import { hint, logEl, logHooks, logLine, logRemote } from '../ui/dom.js';
 import { renderMinis } from '../ui/minis.js';
-import { doUndo, snapshot, tray } from '../ui/panels.js';
+import { doUndo, refreshSight, snapshot, tray } from '../ui/panels.js';
 import { minis, onMinisChange, setMinisSides } from '../view3d/units.js';
 import { cleanDice, cleanMinis, cleanMission, cleanOps, cleanStrings, cleanTray, newRoomCode, parseRoomHash, pickSeat, updateProblem } from './protocol.js';
 import { diceTray, onDiceChange, renderDice, setDiceTray } from '../ui/dicetray.js';
@@ -65,7 +64,7 @@ export function applyGame(g) {
     // point the local selection, target and drag at the new operative objects
     const same = o => o && OPS.find(x => x.id === o.id) || null;
     state.sel = same(state.sel); state.target = same(state.target);
-    state.lastSight = state.sel && state.target && state.target.alive ? sightAnalysis(state.sel, state.target) : null;
+    refreshSight();
     if (state.drag) { state.drag.op = same(state.drag.op); if (!state.drag.op) state.drag = null; }
     const m = cleanMinis(g.minis, TTS_TEAMS.map(t => t.id));
     if (JSON.stringify(m) !== JSON.stringify(minis.sides)) setMinisSides(m);

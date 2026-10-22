@@ -8,12 +8,11 @@ import { BASE_R, CTRL, S } from '../config.js';
 import { dist, opGap } from '../engine/geometry.js';
 import { clampPath, climbDown, climbUp, findPath, placeBlocked, straightenIncrements } from '../engine/movement.js';
 import { foesNear } from '../engine/engage.js';
-import { sightAnalysis } from '../engine/sight.js';
 import { BH, BW, OPS } from '../engine/world.js';
 import { RULES, fmtIn, moveSpec } from '../rules/index.js';
 import { renderAll, renderOverlay } from './board.js';
 import { hint, logLine, svg } from './dom.js';
-import { cancelMode, defaultMoveType, snapshot, toggleOrder } from './panels.js';
+import { cancelMode, defaultMoveType, refreshSight, snapshot, toggleOrder } from './panels.js';
 import { mayControl } from '../net/sync.js';
 import { cancelMarker, placeMarkerAt } from './ops.js';
 
@@ -175,11 +174,11 @@ export function clickOp(oid) {
   const o = OPS.find(z => z.id === oid);
   if (!o || !o.alive) return;
   if (state.sel && o.team !== state.sel.team && (state.mode === "target" || state.mode === null)) {
-    state.target = o; state.lastSight = sightAnalysis(state.sel, o); renderAll();
+    state.target = o; refreshSight(); renderAll();
     if (state.mode === "target") hint("Verdict panel explains the call. Shoot if you like the odds.");
     return;
   }
-  state.sel = o; state.target = null; state.lastSight = null; state.moveType = defaultMoveType(o); cancelMode();
+  state.sel = o; state.target = null; state.lastShot = null; state.moveType = defaultMoveType(o); cancelMode();
   hint(`${o.name} selected — drag to move, Target for line of sight${RULES.orders ? ", or double-click to toggle its order" : ""}.`);
   renderAll();
 }
@@ -213,7 +212,7 @@ export function wireInput() {
         hint(`${d.op.name} belongs to the other player.`); return;
       }
       d.active = true;
-      if (state.sel !== d.op) { state.sel = d.op; state.target = null; state.lastSight = null; state.moveType = defaultMoveType(d.op); }
+      if (state.sel !== d.op) { state.sel = d.op; state.target = null; state.lastShot = null; state.moveType = defaultMoveType(d.op); }
       hint(`${d.op.name}: release to ${(moveSpec(state.moveType) || RULES.moves.primary).label.toLowerCase()} — route ${measuring()}.${RULES.moves.charge ? ` Ending within ${fmtIn(CTRL)}″ of an enemy makes it a ${RULES.moves.charge.label}.` : ""}`);
       renderAll();
     }
