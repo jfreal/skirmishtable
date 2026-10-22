@@ -6,8 +6,10 @@ import { BASE_R, S } from '../config.js';
 /* ---------- geometry ---------- */
 export const px = v => v * S;
 export function dist(ax, ay, bx, by) { return Math.hypot(bx-ax, by-ay); }
-export function opGap(a, b) { return dist(a.x,a.y,b.x,b.y) - 2*BASE_R; } // base-edge to base-edge
-export function perimeterPts(op, n, r = BASE_R) {
+// an operative's base radius: its own base (op.base, mm, from its miniature) or the ruleset's
+export const opR = op => op && op.base ? op.base / 50.8 : BASE_R;
+export function opGap(a, b) { return dist(a.x,a.y,b.x,b.y) - opR(a) - opR(b); } // base-edge to base-edge
+export function perimeterPts(op, n, r = opR(op)) {
   const pts=[]; for (let i=0;i<n;i++){ const a=2*Math.PI*i/n;
     pts.push([op.x+r*Math.cos(a), op.y+r*Math.sin(a)]); } return pts;
 }

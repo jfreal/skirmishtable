@@ -10,6 +10,7 @@ import { buildStatic, renderAll, renderTray } from './board.js';
 import { HINT0, hint, logEl, logLine, svg } from './dom.js';
 import { cancelMode, doUndo, snapshot, tray, undoStack } from './panels.js';
 import { build3DScene, setView, three, view3D } from '../view3d/table3d.js';
+import { syncBases } from '../view3d/units.js';
 import { RULES, RULESETS, fmtIn, setRuleset } from '../rules/index.js';
 import { mayPlay, maySetUp, pump, requestUndo } from '../net/sync.js';
 
@@ -23,6 +24,7 @@ const demoScatter = typeof location === "undefined" || !/[?&]deploy=zones\b/.tes
 
 export function loadMap(keyOrMap) {
   buildWorld(typeof keyOrMap === "string" ? MAPS[keyOrMap] : keyOrMap);
+  syncBases();                    // the new roster stands on its miniatures' bases
   if (demoScatter) scatterRoster();
   svg.setAttribute("viewBox", `0 0 ${px(BW)} ${px(BH)}`);
   state.sel = null; state.target = null; state.lastSight = null; state.drag = null;

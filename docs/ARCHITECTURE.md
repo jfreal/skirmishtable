@@ -29,7 +29,7 @@ A ruleset is a plain object (see `killteam.js`):
 
 | field | used by |
 |---|---|
-| `baseMm`, `controlRange` | `setRuleset` sets `config.BASE_R` / `config.CTRL` (live ES bindings) — the fit map, routing, sight, melee and objectives all read them |
+| `baseMm`, `controlRange` | `setRuleset` sets `config.BASE_R` / `config.CTRL` (live ES bindings). `BASE_R` is the default base: an operative with a miniature stands on its own (see below) |
 | `increment` | `legCost(L)`: `ceil(L / inc) · inc`, or `L` when 0. Route costs, clamping, the whole-inch optimiser, `straightenIncrements` and `chopIncrements` all go through it |
 | `moves.primary / secondary / charge` | labels, verbs, `allow(op)` and `climb`. Game state keeps fixed ids (`reposition`, `dash`, `charge`); the planner builds both move orders and derives the climbing window from which phases may climb |
 | `climbUp(h)`, `climbDown(h)` | portal and climb-leg costs |
@@ -79,7 +79,17 @@ mesh, so they use rectangles measured from the map cards (`VOLKUS_PIECES.templat
 **Clearance.** Felzenszwalb–Huttenlocher squared EDT, columns then rows, from every cell centre
 to the nearest blocking cell. Half a cell is subtracted to reach that cell's edge, and the result
 is capped by the board edges. `clearAt(x, y)` interpolates bilinearly over cell centres and
-applies the board edges exactly. A base fits where `clearAt >= BASE_R` (`ptFree`).
+applies the board edges exactly. A base fits where `clearAt >= NAV_R` (`ptFree`).
+
+**Base sizes.** Each operative's base is `opR(op)` (`engine/geometry.js`): `op.base` in mm when
+set, else the ruleset's `BASE_R`. `op.base` comes from the operative's miniature: `units.js`
+measures the model's base (the largest flat round mesh at its foot, TTS units = inches) when it
+loads and snaps it to 28, 32 or 40mm (`snapBase`); plain tokens have none. Ranges (control
+range, engagement, objectives), sight and cover lines measure from each base's own edge.
+Routing works for one radius at a time, `NAV_R` in `grid.js`: `G.free`, `ptFree`, `segFree`
+and `startTol` read it. The drag planner calls `useBase(opR(op))` (`movement.js`), which
+re-derives `G.free` from the clearance map and swaps in that radius's climb portals, built the
+first time a base of that size moves on the map. `buildClearance()` resets it to `BASE_R`.
 
 **`segFree`** (a base slides along a segment without overlapping terrain) is sphere-traced. At
 each sample, the clearance minus the base radius is how far the base can safely advance (minimum

@@ -4,6 +4,8 @@
  * the game. The unit tests run this in Node. See docs/MULTIPLAYER.md.
  */
 
+import { BASE_SIZES } from "../config.js";
+
 // room codes: no 0/O, 1/I/L, so they survive being read out loud
 const CODE_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 export function newRoomCode(n = 10) {
@@ -95,6 +97,7 @@ export function cleanOps(incoming, local) {
       wounds: Math.max(0, Math.min(l.maxW, num(o.wounds, l.wounds))), ap: num(o.ap, l.ap),
       order: o.order === "engage" ? "engage" : "conceal",
       ready: !!o.ready, alive: !!o.alive,
+      base: BASE_SIZES.includes(o.base) ? o.base : undefined,
       weapon: l.weapons.includes(o.weapon) ? o.weapon : l.weapon,
       used: Array.isArray(o.used) ? o.used.filter(u => ACTS.includes(u)).slice(0, 12) : [] };
   });

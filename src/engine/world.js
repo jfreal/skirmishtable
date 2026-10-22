@@ -6,7 +6,7 @@ import { BASE_R } from '../config.js';
 import { GDMAPS } from '../data/gallowdark.js';
 import { VOLKUS_LAYOUTS } from '../data/volkus-layouts.js';
 import { VOLKUS_TERRAIN } from '../data/volkus-ruins.js';
-import { dist } from './geometry.js';
+import { dist, opR } from './geometry.js';
 import { buildClearance, clearAt, composeFine, deriveFineLists, newGrid, rasterizeRects } from './grid.js';
 import { buildNav } from './movement.js';
 import { convertVolkusBag } from '../import/tts.js';
@@ -84,14 +84,15 @@ export function rosterInit() {
 export function scatterRoster(rng = Math.random, count = 4, covered = 3, near = 1) {
   const m = near + 0.25;   // stay clear of the board edge, or the edge would count as "terrain"
   const okAt = (op, x, y, wantCover) => {
-    if (x < BASE_R + m || x > BW - BASE_R - m || y < BASE_R + m || y > BH - BASE_R - m) return false;
+    const R = opR(op);
+    if (x < R + m || x > BW - R - m || y < R + m || y > BH - R - m) return false;
     const c = clearAt(x, y);
-    if (c < BASE_R + 0.05) return false;                          // the base must fit
-    if (wantCover !== (c - BASE_R <= near)) return false;          // terrain within 1" of the base edge
+    if (c < R + 0.05) return false;                                // the base must fit
+    if (wantCover !== (c - R <= near)) return false;               // terrain within 1" of the base edge
     const dz = DROPZONES[1 - op.team];
     if (x >= dz.x && x <= dz.x + dz.w && y >= dz.y && y <= dz.y + dz.h) return false;
     return !OPS.some(o => o !== op && o.alive &&
-      dist(o.x, o.y, x, y) < 2 * BASE_R + (o.team === op.team ? 0.3 : 2));
+      dist(o.x, o.y, x, y) < R + opR(o) + (o.team === op.team ? 0.3 : 2));
   };
   for (const team of [0, 1]) {
     const side = OPS.filter(o => o.team === team);

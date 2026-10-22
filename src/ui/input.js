@@ -4,9 +4,9 @@
  * inches (setBoardPicker) and hands token presses to armDrag / clickOp.
  */
 import { state } from '../state.js';
-import { BASE_R, CTRL, S } from '../config.js';
-import { dist, opGap } from '../engine/geometry.js';
-import { clampPath, climbDown, climbUp, findPath, placeBlocked, straightenIncrements } from '../engine/movement.js';
+import { CTRL, S } from '../config.js';
+import { dist, opGap, opR } from '../engine/geometry.js';
+import { clampPath, climbDown, climbUp, findPath, placeBlocked, straightenIncrements, useBase } from '../engine/movement.js';
 import { foesNear } from '../engine/engage.js';
 import { sightAnalysis } from '../engine/sight.js';
 import { BH, BW, OPS } from '../engine/world.js';
@@ -69,12 +69,13 @@ const mayCharge = op => !!RULES.moves.charge && !["reposition", "dash", "charge"
 
 // re-plan the active drag towards board point (x, y)
 function planDrag(x, y) {
-  const d = state.drag;
-  const gx = Math.min(BW - BASE_R, Math.max(BASE_R, x));
-  const gy = Math.min(BH - BASE_R, Math.max(BASE_R, y));
+  const d = state.drag, R = opR(d.op);
+  useBase(R);                                       // route, fit and collide this operative's own base
+  const gx = Math.min(BW - R, Math.max(R, x));
+  const gy = Math.min(BH - R, Math.max(R, y));
   // Engagement range: a normal move can't end within control range of an enemy, so
   // dragging there turns the move into a Charge (Move + 2″, 1AP) when one is allowed.
-  const intoFoes = foesNear(gx, gy, d.op.team, d.op.id).length > 0;
+  const intoFoes = foesNear(gx, gy, d.op.team, d.op.id, R).length > 0;
   const charging = state.moveType === "charge" || (intoFoes && mayCharge(d.op));
   d.autoCharge = charging && state.moveType !== "charge";
   const plans = plansFor(d.op, charging ? "charge" : state.moveType);
@@ -101,7 +102,7 @@ function planDrag(x, y) {
     d.primAllow = pl.p1.allow;
     d.secondary = pl.p2 ? pl.p2.type : null;
     d.secAllow = pl.p2 ? pl.p2.allow : 0;
-    d.foes = foesNear(end[0], end[1], d.op.team, d.op.id);
+    d.foes = foesNear(end[0], end[1], d.op.team, d.op.id, R);
     d.why = placeBlocked(end[0], end[1], d.op.id) ? "occupied"
       : charging && !d.foes.length ? "a Charge must end within engagement range"
       : !charging && d.foes.length && RULES.moves.charge ? "engagement range — can't Charge after moving"

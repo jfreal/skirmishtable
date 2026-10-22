@@ -26,7 +26,8 @@ export function renderMinis() {
       html += `<div class="miniops">`;
       for (const op of OPS.filter(o => o.team === side)) {
         const pick = modelIndex(op, team.models.length);
-        html += `<label>${op.id} <select data-side="${side}" data-op="${op.id}" class="minipick"${off}>
+        // the base measured off its model (blank until the model has loaded)
+        html += `<label title="Base size, measured off the model">${op.id}${op.base ? ` · ${op.base}mm` : ""} <select data-side="${side}" data-op="${op.id}" class="minipick"${off}>
           ${team.models.map((m, i) => `<option value="${i}"${i === pick ? " selected" : ""}>${esc(m.name)} · ${m.w}W</option>`).join("")}
         </select></label>`;
       }

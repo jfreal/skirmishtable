@@ -221,7 +221,7 @@ function texture(path, renderer, steam = fromSteam) {
   const t = bundleTex[path] ? bundleTexture(path) : steam ? steamTexture(path)
     : imageTexture(fetch(urlOf(path)).then(r => { if (!r.ok) throw new Error(r.status); return r; }), (manifest.textures || {})[path] || 0);
   t.encoding = THREE.sRGBEncoding;
-  t.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  if (renderer) t.anisotropy = renderer.capabilities.getMaxAnisotropy();   // none yet: measuring bases from the 2D map
   return texCache[path] = t;
 }
 // material for a steamParts() part: textures always come from Steam; `color` is a TTS tint

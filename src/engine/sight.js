@@ -1,8 +1,8 @@
 /**
  * Line of sight, cover and obscuring, judged on the terrain grid.
  */
-import { BASE_R, CTRL } from '../config.js';
-import { dist, opGap, perimeterPts } from './geometry.js';
+import { CTRL } from '../config.js';
+import { dist, opGap, opR, perimeterPts } from './geometry.js';
 import { C_HEAVY, C_LIGHT, C_WALL, FEATS, G, GRES, gridWalk } from './grid.js';
 import { BH, BW } from './world.js';
 import { RULES } from '../rules/index.js';
@@ -37,8 +37,8 @@ export function lineBlocked(x1, y1, x2, y2) {
 // Distances come from the ruleset. Judged cell by cell, so a nooked operative gets cover
 // from the actual wall beside it, not a whole building.
 export function sightAnalysis(a, b) {
-  const rr = BASE_R - 0.02;
-  const aPts = perimeterPts(a, 16, rr), bPts = perimeterPts(b, 24, rr);
+  const rA = opR(a), rB = opR(b);
+  const aPts = perimeterPts(a, 16, rA - 0.02), bPts = perimeterPts(b, 24, rB - 0.02);
   const gap = opGap(a, b), half = GRES / 2, nx = G.nx;
   const { cover, obscure } = RULES, coverOn = gap > cover.voidWithin;
   // Visible: any one unblocked line (each walk stops at the first wall). Not visible
@@ -61,10 +61,10 @@ export function sightAnalysis(a, b) {
         if (c < C_WALL || c > C_LIGHT) return false;
         if (c !== C_LIGHT) blocked = true;
         const cx = (k % nx + 0.5) * GRES, cy = ((k / nx | 0) + 0.5) * GRES;
-        const dB = dist(cx, cy, b.x, b.y) - BASE_R - half;
+        const dB = dist(cx, cy, b.x, b.y) - rB - half;
         if (coverOn && dB <= cover.range + 1e-9) { r.cover = true; if (visit) visit("cov", G.fid[k], cx, cy, dB, bx, by); }
         if (c !== C_LIGHT && obscure) {
-          const dA = dist(cx, cy, a.x, a.y) - BASE_R - half;
+          const dA = dist(cx, cy, a.x, a.y) - rA - half;
           if (dA > obscure.beyond && dB > obscure.beyond) { r.obsc = true; if (visit) visit("obs", G.fid[k], cx, cy, Math.min(dA, dB), bx, by); }
         }
         return false;
