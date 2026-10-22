@@ -7,7 +7,7 @@ export default {
   id: 'killteam',
   name: 'Kill Team (2024)',
   short: 'Kill Team',
-  blurb: 'Moves in whole-inch increments; Reposition then Dash 3″; climbing costs the height (at least 2″) plus the drop past the free 2″; cover from terrain or other operatives within 1″ unless within 2″; obscured by heavy terrain more than 1″ from the shooter and 2″ from the target; Conceal/Engage orders.',
+  blurb: 'Moves in whole-inch increments; Reposition then Dash 3″; climbing costs the height (at least 2″) plus the drop past the free 2″; cover from terrain (not other operatives) within 1″ unless within 2″; obscured by heavy terrain more than 1″ from the shooter and 2″ from the target; Conceal/Engage orders.',
   baseMm: 28,              // base diameter
   controlRange: 1,         // melee, objective control and the shaded ring round a selected model
   increment: 1,            // moves are paid in increments of this many inches (0 = measured exactly)

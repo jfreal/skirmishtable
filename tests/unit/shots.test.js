@@ -1,4 +1,4 @@
-// Valid shots: base-to-base cover lines, heavy vs light terrain, other operatives' bases,
+// Valid shots: base-to-base cover lines, heavy vs light terrain, other operatives (no cover),
 // the cover distance, the Conceal order and its Vantage / Indirect exceptions, and friends
 // in melee with the target, judged on small hand-made boards under all three rulesets.
 import { describe, it, expect, afterAll } from 'vitest';
@@ -133,42 +133,27 @@ describe('Kill Team (2024): obscured more than 1" from the shooter and 2" from t
   });
 });
 
-describe('Kill Team (2024): other operatives give cover', () => {
-  it('the base of another operative within 1" of the target gives cover', () => {
+describe('Kill Team (2024): other operatives give no cover', () => {
+  it('the base of another operative right in front of the target gives no cover', () => {
     use('killteam'); board();
     ops(['A1', 0, 3, 6], ['B1', 1, 12, 6], ['B2', 1, 10.6, 6]);
     const j = shotAt('B1');
-    expect(j.kind).toBe('cover');
-    expect(j.inCover).toBe(true);
-    expect(j.sight.coverBy.kind).toBe('operative');
-    expect(j.sight.coverBy.op.id).toBe('B2');
-    expect(j.sight.hardCover).toBe(false);
-    expect(j.line).toEqual(j.sight.coverBy.line);
+    expect(j.kind).toBe('clear');
+    expect(j.inCover).toBe(false);
+    expect(j.sight.coverBy).toBeNull();
+    expect(j.sight.obscBy).toBeNull();
   });
 
-  it('a base never obscures, and gives no cover further than 1" from the target', () => {
+  it('a friendly base in front of the target gives no cover either', () => {
     use('killteam'); board();
-    ops(['A1', 0, 3, 6], ['B1', 1, 12, 6], ['B2', 1, 7.5, 6]);
-    expect(shotAt('B1').kind).toBe('clear');
-    expect(shotAt('B1').sight.obscBy).toBeNull();
-  });
-
-  it('the shooter\'s own base and the target\'s give no cover', () => {
-    use('killteam'); board();
-    ops(['A1', 0, 3, 6], ['B1', 1, 12, 6]);
+    ops(['A1', 0, 3, 6], ['B1', 1, 12, 6], ['A2', 0, 9, 6]);
     expect(shotAt('B1').kind).toBe('clear');
   });
 
-  it('a base gives no cover within 2" either', () => {
-    use('killteam'); board();
-    ops(['A1', 0, 9, 6], ['B1', 1, 12, 6], ['B2', 1, 10.8, 6]);   // 1.9" base to base
-    expect(shotAt('B1').kind).toBe('clear');
-  });
-
-  it('a Concealed target behind another operative is not a valid target', () => {
+  it('a Concealed target behind another operative is still a valid target', () => {
     use('killteam'); board();
     ops(['A1', 0, 3, 6], ['B1', 1, 12, 6, 'conceal'], ['B2', 1, 10.6, 6]);
-    expect(shotAt('B1').kind).toBe('concealed');
+    expect(shotAt('B1').kind).toBe('clear');
   });
 });
 
@@ -274,10 +259,10 @@ describe('the other rulesets', () => {
     expect(kind(A, B)).toBe('clear');
   });
 
-  it('Infinity-style: other bases give cover within ½", and melee means base contact', () => {
+  it('Infinity-style: other bases give no cover, and melee means base contact', () => {
     use('infinity'); board();
     ops(['A1', 0, 3, 6], ['B1', 1, 12, 6], ['B2', 1, 10.8, 6]);
-    expect(shotAt('B1').kind).toBe('cover');
+    expect(shotAt('B1').kind).toBe('clear');
     ops(['A1', 0, 3, 6], ['B1', 1, 12, 6], ['A2', 0, 12, 7.6]);
     expect(shotAt('B1').kind).toBe('clear');
     ops(['A1', 0, 3, 6], ['B1', 1, 12, 6], ['A2', 0, 12, 7]);

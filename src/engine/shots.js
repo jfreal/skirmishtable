@@ -6,9 +6,8 @@
  */
 import { WPN } from '../config.js';
 import { foesNear } from './engage.js';
-import { opGap } from './geometry.js';
 import { G } from './grid.js';
-import { canSee, sightAnalysis } from './sight.js';
+import { sightAnalysis } from './sight.js';
 import { OPS } from './world.js';
 import { RULES } from '../rules/index.js';
 
@@ -33,21 +32,18 @@ export function standing(p) {
 // One shot from eye {x, y, team?, op?, weapon?} at target {x, y, order}. Kill Team's
 // targeting, in order: the target must be visible; then not obscured; then cover decides,
 // with the order: a Concealed target in cover isn't a valid target, unless the shooter
-// looks down from a Vantage Point over cover that is only light terrain or operatives'
-// bases, or shoots an Indirect weapon (both make it count as on Engage for this shot; it
+// looks down from a Vantage Point over cover that is only light terrain, or shoots an Indirect weapon (both make it count as on Engage for this shot; it
 // still keeps its cover save). Last, an enemy with one of the shooter's friends in its
 // control range is in melee and not a valid target.
-// `eye.op` is the shooter's own operative (left out of the other bases); `eye.weapon` a
+// `eye.op` is the shooter's own operative; `eye.weapon` a
 // WPN key or weapon object, else the shooter's selected weapon.
 // `line` is the sight line that decides the call: a clear line, the cover line through the
 // cover or the one through the obscuring terrain. A target that isn't visible gets no
 // line: nothing to draw one to. `inCover` says whether the cover save applies if it is shot.
 export function judgeShot(eye, target) {
   const shooter = eye.op || eye;
-  const others = OPS.filter(o => o.alive && o !== shooter && o !== target && !(eye.op && o.id === eye.op.id));
-  // other operatives' bases give cover only when the shooter can see them
-  const bases = others.filter(o => opGap(o, target) <= RULES.cover.range + 1e-9 && canSee(eye, o));
-  const s = sightAnalysis(eye, target, bases);
+  // other operatives never give cover: only terrain does
+  const s = sightAnalysis(eye, target);
   const wk = eye.weapon !== undefined ? eye.weapon : eye.op && eye.op.weapon;
   const w = typeof wk === "string" ? WPN[wk] : wk;
   const indirect = !!(w && w.rules && w.rules.includes("Indirect"));
