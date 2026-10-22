@@ -63,7 +63,7 @@ panel. The table (terrain grid, fit map, routing, sight geometry, 3D view) never
 | which moves can climb | Reposition, Charge | both | Advance, Assault |
 | climb cost | height up (≥2″) + drop past 2″ | height up, drop free | flat 3″ up + 1″ down |
 | cover (terrain only, never other operatives) | terrain within 1″ of target, none within 2″ | terrain within ½″ | terrain within 2″, none within 3″ |
-| obscured (valid, attacker discards a success) | sight-blockers >1″ from shooter and >2″ from target, none within 2″ | — | sight-blockers >3″ from both |
+| obscured (valid, attacker discards a success; can also be in cover) | sight-blockers >1″ from shooter and >2″ from target, none within 2″ | — | sight-blockers >3″ from both |
 | orders | Conceal / Engage (on Conceal: can't Shoot, and not a valid target in cover) | — | — |
 
 The Infinity-style ruleset is *inspired by* that game's feel, not its actual rules; Ashfall is

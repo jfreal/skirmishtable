@@ -42,15 +42,15 @@ export function cannotShoot(eye) {
 // One shot from eye {x, y, team?, op?} at target {x, y, order}: is the target a valid
 // target? Kill Team's steps, in order: an enemy with one of the shooter's friends in its
 // control range is in melee, not a valid target; one that isn't visible isn't either. A
-// target within 2" is a clear shot (no cover, no obscuring: see sightAnalysis). Then an
-// obscured target is valid (the attack dice suffer for it); one in cover is valid on
-// Engage (cover save) and not on Conceal, unless the shooter stands on a Vantage Point
-// and the cover is only light terrain: then it is valid, and its cover save counts as a
-// critical success. On Engage, a Vantage Point at least `vantage.accurate[0]` / `[1]`
-// above the target gives the shot Accurate 1 / 2.
+// target within 2" is a clear shot (no cover, no obscuring: see sightAnalysis). Further
+// away it can be obscured, in cover, or both. In cover on Conceal it isn't a valid target,
+// unless the shooter stands on a Vantage Point and the cover is only light terrain. Any
+// other target is valid: obscured makes the attack dice suffer, cover gives a cover save,
+// and on Engage a Vantage Point at least `vantage.accurate[0]` / `[1]` above the target
+// gives the shot Accurate 1 / 2.
 // `line` is the sight line that decides the call: a clear line, the cover line through the
 // cover or the one through the obscuring terrain; none to a target that isn't visible.
-// `save` is the cover save the target gets if shot: "normal", "crit" or null.
+// `obscured` and `save` (a cover save) say what applies if it is shot.
 export function judgeShot(eye, target) {
   const shooter = eye.op || eye;
   const s = sightAnalysis(eye, target);
@@ -60,22 +60,21 @@ export function judgeShot(eye, target) {
     : foesNear(target.x, target.y, target.team, shooter.id ?? null).find(o => o.team === eye.team && o !== shooter) || null;
   const V = RULES.vantage, up = standing(eye), drop = up.z - standing(target).z;
   const onVantage = !!(V && up.vantage);
-  let kind, save = null, accurate = 0;
+  const obscured = !!(s.visible && s.obscBy), inCover = !!(s.visible && s.coverBy);
+  const conceal = !!(RULES.orders && target.order === "conceal");
+  // a Concealed target in light cover, seen past from a Vantage Point
+  const vantage = inCover && conceal && onVantage && !s.hardCover;
+  let kind;
   if (engagedBy) kind = "engaged";
   else if (!s.visible) kind = "hidden";
-  else if (s.obscBy) kind = "obscured";
-  else if (!s.coverBy) kind = "clear";
-  else if (!(RULES.orders && target.order === "conceal")) {
-    kind = "cover"; save = "normal";
-    if (onVantage) accurate = V.accurate.filter(h => drop >= h - 1e-9).length;
-  }
-  else if (onVantage && !s.hardCover) { kind = "cover"; save = "crit"; }   // seen past light cover from above
-  else kind = "concealed";
-  const line = !s.visible ? null : s.obscBy ? s.obscBy.line : s.coverBy ? s.coverBy.line : s.clearLine;
-  return {target, kind, sight: s, line, range: Math.max(0, s.gap), engagedBy, save, accurate,
-          inCover: !!s.coverBy && !s.obscBy,
-          // a Concealed target made valid by shooting down from a Vantage Point
-          vantage: save === "crit"};
+  else if (inCover && conceal && !vantage) kind = "concealed";
+  else kind = obscured ? "obscured" : inCover ? "cover" : "clear";
+  const accurate = inCover && !conceal && onVantage ? V.accurate.filter(h => drop >= h - 1e-9).length : 0;
+  const line = !s.visible ? null
+             : kind === "concealed" ? s.coverBy.line
+             : obscured ? s.obscBy.line : inCover ? s.coverBy.line : s.clearLine;
+  return {target, kind, sight: s, line, range: Math.max(0, s.gap), engagedBy,
+          obscured, inCover, save: inCover, accurate, vantage};
 }
 
 // Every live enemy of eye.team, judged from eye. Re-judged only when the eye, any

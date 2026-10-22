@@ -120,7 +120,7 @@ describe('Kill Team (2024): obscured more than 1" from the shooter and 2" from t
     const j = shots.judgeShot(A, B);
     expect(j.kind).toBe('obscured');
     expect(shots.SHOT_KINDS[j.kind].valid).toBe(true);
-    expect(j.save).toBeNull();
+    expect([j.obscured, j.save]).toEqual([true, false]);
   });
 
   it('between 1" and 2" from the target it neither obscures nor gives cover', () => {
@@ -131,9 +131,20 @@ describe('Kill Team (2024): obscured more than 1" from the shooter and 2" from t
     expect(kind(A, B)).toBe('clear');
   });
 
-  it('an obscured target is a valid one on Conceal too', () => {
+  it('an obscured target out of cover is a valid one on Conceal too', () => {
     use('killteam'); board(heavyPart);
     expect(kind(A, op(12, 6, 'conceal'))).toBe('obscured');
+  });
+
+  it('a target can be obscured and in cover at once', () => {
+    use('killteam'); board(heavyPart, lightNear);
+    const j = shots.judgeShot(A, B);
+    expect([j.kind, j.obscured, j.inCover, j.save]).toEqual(['obscured', true, true, true]);
+    expect(j.sight.coverBy.kind).toBe('light');
+    // on Conceal the cover decides: not a valid target, and the line shows the cover
+    const c = shots.judgeShot(A, op(12, 6, 'conceal'));
+    expect([c.kind, c.obscured]).toEqual(['concealed', true]);
+    expect(c.line).toEqual(c.sight.coverBy.line);
   });
 
   it('within 2" nothing obscures and nothing gives cover', () => {
@@ -190,13 +201,13 @@ describe('Kill Team (2024): Conceal and Vantage Points', () => {
   it('on Engage in cover it is valid and keeps a normal cover save', () => {
     use('killteam'); board(lightNear);
     const j = shots.judgeShot(A, B);
-    expect([j.kind, j.save, j.accurate]).toEqual(['cover', 'normal', 0]);
+    expect([j.kind, j.save, j.accurate]).toEqual(['cover', true, 0]);
   });
 
-  it('from a Vantage Point, Conceal in light cover is valid, its cover save a crit', () => {
+  it('from a Vantage Point, Conceal in light cover is valid and keeps its cover save', () => {
     use('killteam'); board(lightNear);
     const j = shots.judgeShot({...A, z: 3, vantage: true}, op(12, 6, 'conceal'));
-    expect([j.kind, j.save, j.vantage]).toEqual(['cover', 'crit', true]);
+    expect([j.kind, j.save, j.vantage]).toEqual(['cover', true, true]);
     expect(kind({...A, z: 3}, op(12, 6, 'conceal'))).toBe('concealed');            // not a Vantage Point
     board(heavyNear);
     expect(kind({...A, z: 3, vantage: true}, op(12, 6, 'conceal'))).toBe('concealed');   // heavy cover
@@ -206,17 +217,14 @@ describe('Kill Team (2024): Conceal and Vantage Points', () => {
     use('killteam'); board(lightNear);
     const acc = z => shots.judgeShot({...A, z, vantage: true}, B).accurate;
     expect([acc(1.5), acc(2), acc(3.9), acc(4)]).toEqual([0, 1, 1, 2]);
-    expect(shots.judgeShot({...A, z: 4, vantage: true}, B).save).toBe('normal');
+    expect(shots.judgeShot({...A, z: 4, vantage: true}, B).save).toBe(true);
   });
 
-  it('the cover save is kept unrolled: one normal success, or a crit', () => {
+  it('the cover save is kept unrolled as one normal success', () => {
     for (let n = 0; n < 20; n++) {
-      const plain = rollDefence(7, false), normal = rollDefence(7, 'normal'), crit = rollDefence(7, 'crit');
-      expect([plain.dice.length, normal.dice.length, crit.dice.length]).toEqual([3, 2, 2]);
-      // a 7+ save only succeeds on 6s, so what's left over is the kept cover save
-      const sixes = d => d.dice.filter(v => v === 6).length;
-      expect([normal.norm, normal.crit - sixes(normal)]).toEqual([1, 0]);
-      expect([crit.norm, crit.crit - sixes(crit)]).toEqual([0, 1]);
+      const plain = rollDefence(7, false), cover = rollDefence(7, true);
+      expect([plain.dice.length, cover.dice.length]).toEqual([3, 2]);
+      expect(cover.norm).toBe(1);        // a 7+ save never succeeds by itself
     }
   });
 

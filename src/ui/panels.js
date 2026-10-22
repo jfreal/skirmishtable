@@ -52,13 +52,13 @@ function doShoot() {
   showRoll(a.dice, effHit(state.sel, w), state.sel.team, `${state.sel.name} shoots`);
   let aCrit = a.crit, aNorm = a.norm + acc, notes = [];
   if (acc) notes.push(`Accurate ${acc}`);
-  if (shot.kind === "obscured") { // crits become normal, then discard one success
+  if (shot.obscured) { // crits become normal, then discard one success
     aNorm += aCrit; aCrit = 0;
     if (aNorm > 0) aNorm--;
     notes.push("obscured: crits downgraded, one success discarded");
   }
   const dfn = rollDefence(state.target.save, shot.save);
-  if (dfn.cover) notes.push(dfn.cover === "crit" ? "cover save banked as a crit" : "cover save banked");
+  if (dfn.cover) notes.push("cover save banked");
   let dCrit = dfn.crit, dNorm = dfn.norm;
   // resolve defence: crits block crits first, then normals; two normals stop a crit
   while (dCrit > 0) { if (aCrit > 0) {aCrit--; dCrit--;} else if (aNorm > 0) {aNorm--; dCrit--;} else break; }
@@ -226,12 +226,13 @@ export function renderVerdict() {
   else if (shot.kind === "hidden") { big = "NOT VISIBLE"; cls = "v-novis"; why.push("no clear sight line — blocked by terrain"); }
   else {
     if (shot.kind === "obscured") { big = "VALID — OBSCURED"; cls = "v-obsc";
-      why.push(`heavy terrain ${o.id} crosses a cover line more than ${fmtIn(RULES.obscure.fromShooter)}" from the shooter and ${fmtIn(RULES.obscure.fromTarget)}" from the target → one success discarded, crits count as normal`); }
+      why.push(`heavy terrain ${o.id} crosses a cover line more than ${fmtIn(RULES.obscure.fromShooter)}" from the shooter and ${fmtIn(RULES.obscure.fromTarget)}" from the target → one success discarded, crits count as normal`);
+      if (c) why.push(`also in cover behind ${c.id}${shot.vantage ? " (conceal order, seen past from a Vantage Point)" : ""} → cover save`); }
     else if (shot.kind === "concealed") { big = "NOT A VALID TARGET"; cls = "v-novis";
       why.push(`conceal order + in cover behind ${c.id}${s.hardCover ? " (heavy)" : ""}`); }
     else if (shot.kind === "cover") { big = "VALID — IN COVER"; cls = "v-cover";
       why.push(shot.vantage
-        ? `conceal order, but shot down from a Vantage Point past light cover (${c.id}) → cover save kept as a crit`
+        ? `conceal order, but shot down from a Vantage Point past light cover (${c.id}) → cover save`
         : `${c.id} intervenes within ${fmtIn(RULES.cover.range)}" of target → cover save`); }
     else { big = "VALID TARGET"; cls = "v-valid"; why.push("clear shot — no cover, not obscured"); }
     if (shot.accurate) why.push(`from a Vantage Point: Accurate ${shot.accurate}`);
@@ -252,7 +253,7 @@ function shotWhy(s) {
   const c = s.sight.coverBy, o = s.sight.obscBy, acc = s.accurate ? `; Accurate ${s.accurate} from a Vantage Point` : "";
   if (s.kind === "clear") return "no cover, not obscured";
   if (s.kind === "cover") return s.vantage ? `on Conceal behind ${c.id}, seen past from a Vantage Point` : `${c.id} within ${fmtIn(RULES.cover.range)}″ of it${acc}`;
-  if (s.kind === "obscured") return `heavy terrain ${o.id} in the way`;
+  if (s.kind === "obscured") return `heavy terrain ${o.id} in the way${c ? `; also in cover (${c.id})` : ""}`;
   if (s.kind === "concealed") return `on Conceal, in cover (${c.id})`;
   if (s.kind === "engaged") return `in melee with ${s.engagedBy.name}`;
   return "every line blocked by walls or heavy terrain";

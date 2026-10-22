@@ -196,23 +196,22 @@ order and returns one of six calls, plus the deciding line (none when the target
    the target's engagement range (`foesNear` in `engage.js`). In melee, so not a valid target.
 2. `hidden`: not visible, not a valid target.
 3. Within 2": `clear` (see Sight step 2).
-4. `obscured`: valid. When it is shot the attacker's crits count as normal successes and one
-   success is discarded. There's no cover save, and the order doesn't matter.
-5. In cover:
-   - on Engage: `cover`, valid, cover save kept as a normal success (`save: "normal"`). From a
-     Vantage Point the shot gets Accurate 1 if the target is at least `vantage.accurate[0]` (2")
-     lower, Accurate 2 at `vantage.accurate[1]` (4") (`accurate`).
-   - on Conceal, in heavy cover: `concealed`, not a valid target.
-   - on Conceal, in light cover: `concealed`, unless the shooter stands on a Vantage Point. Then
-     it is `cover`, valid, and its cover save counts as a critical success (`save: "crit"`,
-     `vantage: true`).
+4. Further away a target can be obscured, in cover, or both (`obscured`, `inCover`):
+   - in cover on Conceal: `concealed`, not a valid target, unless the cover is only light
+     terrain and the shooter stands on a Vantage Point (`vantage: true`). Heavy cover always
+     protects a Concealed target.
+   - anything else is valid. The call is `obscured` if obscured, else `cover` if in cover,
+     else `clear`. When an obscured target is shot, the attacker's crits count as normal
+     successes and one success is discarded. In cover, the target keeps one defence die as a
+     normal success without rolling it (`save`). On Engage in cover, a Vantage Point gives
+     the shot Accurate 1 if the target is at least `vantage.accurate[0]` (2") lower, or
+     Accurate 2 at `vantage.accurate[1]` (4") (`accurate`).
 
    Heights and Vantage Points come from `standing(p)`. TODO: the engine has no model heights or
    terrain traits yet, so this only reads `z` / `vantage` set on the eye or target and is
    0 / false otherwise.
-6. Otherwise `clear`.
 
-The result also carries `save`, `accurate`, `inCover`, `engagedBy` and `range`.
+The result also carries `obscured`, `inCover`, `save`, `accurate`, `vantage`, `engagedBy` and `range`.
 `shotsFrom(eye)` judges every live enemy (never a friendly) and
 reuses the answer until the eye, any operative, the map or the rules change. While an operative is
 selected or dragged (`board.shotEye()`: the landing spot during a drag), the 2D map and the 3D
@@ -220,7 +219,7 @@ table mark every enemy in the colour of its call (`SHOT_COL`) with the deciding 
 panel lists them, valid targets first. The chosen target's judgement is `state.lastShot`
 (`panels.refreshSight()`, again on every `renderAll`). The verdict panel explains it. `doShoot`
 checks `cannotShoot` and judges again. It refuses an invalid target, applies Accurate and the
-obscured penalty, and rolls the cover save `save` asks for.
+obscured penalty, and rolls the cover save when `save`.
 
 `visibilityPolygon(x, y)` casts 720 rays to the first wall or heavy cell (or the board edge) for
 the shadow overlay.
