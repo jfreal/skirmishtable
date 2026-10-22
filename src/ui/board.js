@@ -275,7 +275,12 @@ export function shotEye() {
   return state.sel && state.sel.alive ? {x: state.sel.x, y: state.sel.y, team: state.sel.team, op: state.sel, landing: false} : null;
 }
 // one colour per shot judgement, on the 2D map, the 3D table and the side panel
-export const SHOT_COL = {clear: "#3f9a3a", cover: "#d79a1e", obscured: "#8d5fa8", concealed: "#a8873f", hidden: "#857b70"};
+export const SHOT_COL = {clear: "#3f9a3a", cover: "#d79a1e", obscured: "#8d5fa8", concealed: "#a8873f", engaged: "#b5523b", hidden: "#857b70"};
+// What the deciding line meets: the obscuring terrain, or the cover whenever the target is
+// in it; nothing for a clear shot or one that isn't visible.
+export function shotHit(sh) {
+  return sh.kind === "obscured" ? sh.sight.obscBy : sh.inCover ? sh.sight.coverBy : null;
+}
 function renderShadows(eye) {
   const g = el("g", {opacity:0.15, "clip-path":"url(#boardclip)", "pointer-events":"none"}, gOverlay);
   const poly = visibilityPolygon(eye.x, eye.y).map(p => px(p[0]).toFixed(1) + " " + px(p[1]).toFixed(1));
@@ -293,7 +298,7 @@ function renderShadows(eye) {
       el("line", {x1:px(ax), y1:px(ay), x2:px(bx), y2:px(by), stroke: col,
         "stroke-width": 1.6, "stroke-dasharray": k.valid ? "none" : "3 4", opacity: 0.85}, gOverlay);
     }
-    const hit = sh.kind === "obscured" ? sh.sight.obscBy : sh.kind === "cover" || sh.kind === "concealed" ? sh.sight.coverBy : null;
+    const hit = shotHit(sh);
     if (hit) el("circle", {cx:px(hit.at[0]), cy:px(hit.at[1]), r:3.5, fill:col, stroke:"#14110e", "stroke-width":1}, gOverlay);
     if (sh.kind === "clear")
       el("circle", {cx:px(o.x), cy:px(o.y), r:px(BASE_R)+8, fill:"none", stroke:col, "stroke-width":5, opacity:0.25}, gOverlay);
@@ -385,18 +390,19 @@ export function renderOverlay(cursor) {
     }
   }
   // sight lines
-  if (state.lastSight && state.sel && state.target && state.target.alive) {
+  if (state.lastShot && state.sel && state.target && state.target.alive) {
+    const s = state.lastShot.sight;
     const bPts = perimeterPts(state.target, 24, BASE_R - 0.02);
-    const [ax, ay] = state.lastSight.from;
+    const [ax, ay] = s.from;
     for (const [bx, by] of bPts) {
       const blocked = lineBlocked(ax, ay, bx, by);
       el("line", {x1:px(ax), y1:px(ay), x2:px(bx), y2:px(by),
         stroke: blocked ? "#cf4f37" : "#4d7a3f", opacity: blocked ? 0.18 : 0.3, "stroke-width":1}, gOverlay);
     }
-    for (const t of [state.lastSight.coverBy, state.lastSight.obscBy]) {
+    for (const t of [s.coverBy, s.obscBy]) {
       if (!t) continue;
       el("rect", {x:px(t.x)-3, y:px(t.y)-3, width:px(t.w)+6, height:px(t.h)+6, fill:"none",
-        stroke: t === state.lastSight.obscBy ? "#8d5fa8" : "#a06a10", "stroke-width":2, "stroke-dasharray":"5 4"}, gOverlay);
+        stroke: t === s.obscBy ? "#8d5fa8" : "#a06a10", "stroke-width":2, "stroke-dasharray":"5 4"}, gOverlay);
     }
   }
 }

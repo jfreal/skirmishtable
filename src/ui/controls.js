@@ -20,7 +20,7 @@ const playOnly = () => { if (mayPlay()) return false; hint("You're watching — 
 export function loadMap(keyOrMap) {
   buildWorld(typeof keyOrMap === "string" ? MAPS[keyOrMap] : keyOrMap);
   svg.setAttribute("viewBox", `0 0 ${px(BW)} ${px(BH)}`);
-  state.sel = null; state.target = null; state.lastSight = null; state.drag = null;
+  state.sel = null; state.target = null; state.lastShot = null; state.drag = null;
   undoStack.length = 0;
   Object.assign(tray, {tp:1, cp:[3,3], vp:[0,0]});
   cancelMode();

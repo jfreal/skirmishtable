@@ -5,7 +5,7 @@ export const state = {
   mode: null,
   moveType: "reposition",
   target: null,
-  lastSight: null,
+  lastShot: null,
   drag: null,
   suppressClick: false,
   rulerPts: [],

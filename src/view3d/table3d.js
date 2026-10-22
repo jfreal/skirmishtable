@@ -10,7 +10,7 @@ import { BASE_R, CTRL, OBJ_R, TEAMCOL, TEAMGREY } from '../config.js';
 import { BH, BW, DECOR, DROPZONES, MAP, OBJECTIVES, OPS, TERRAIN } from '../engine/world.js';
 import { chopIncrements, climbDown, climbUp } from '../engine/movement.js';
 import { RULES, fmtIn } from '../rules/index.js';
-import { MARKER_R, SHOT_COL, dragLabelText, shotEye } from '../ui/board.js';
+import { MARKER_R, SHOT_COL, dragLabelText, shotEye, shotHit } from '../ui/board.js';
 import { opsState, placeMarkerAt } from '../ui/ops.js';
 import { TTS_OPS } from '../data/tts-ops.js';
 import { hint } from '../ui/dom.js';
@@ -265,7 +265,7 @@ function sightShade(g, eye) {
       const [[ax, ay], [bx, by]] = sh.line;
       ribbon(g, ax, ay, 0.6, bx, by, 0.6, valid ? 0.05 : 0.025, hex);
     }
-    const hit = sh.kind === "obscured" ? sh.sight.obscBy : sh.kind === "cover" || sh.kind === "concealed" ? sh.sight.coverBy : null;
+    const hit = shotHit(sh);
     if (hit) dot(g, hit.at[0], hit.at[1], 0.6, 0.12, hex);
     const tag = shotTag(sh.kind);
     tag.position.set(o.x, 3.0, o.y);
@@ -288,7 +288,7 @@ function shotTag(kind) {
 // the chosen target's cover lines: every line from the attacker's best base point to the
 // target's base, green where clear and red where terrain blocks it (as on the 2D map)
 function targetLines(g) {
-  const s = state.lastSight, [ax, ay] = s.from, pts = [], cols = [];
+  const s = state.lastShot.sight, [ax, ay] = s.from, pts = [], cols = [];
   const ok = new THREE.Color(0x5fae4c), bad = new THREE.Color(0xcf4f37);
   for (const [bx, by] of perimeterPts(state.target, 24, BASE_R - 0.02)) {
     const c = lineBlocked(ax, ay, bx, by) ? bad : ok;
@@ -343,8 +343,8 @@ export function sync3DOverlay() {
     g.add(label);
   }
   // the chosen target: the sight line the engine found, green, or a red line if none
-  if (state.sel && state.target && state.target.alive && state.lastSight) {
-    const s = state.lastSight;
+  if (state.sel && state.target && state.target.alive && state.lastShot) {
+    const s = state.lastShot.sight;
     targetLines(g);
     for (const t of [s.coverBy, s.obscBy]) {
       if (!t) continue;
