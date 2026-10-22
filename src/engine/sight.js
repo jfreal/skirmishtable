@@ -29,28 +29,29 @@ export function lineBlocked(x1, y1, x2, y2) {
 // Line-of-sight analysis between two operatives (Kill Team 2024 style). Cover lines run
 // from any one point of the attacker's base to every part of the target's base, straight
 // through terrain. Walls and heavy terrain block sight; light doesn't. Visible: some cover
-// line is unblocked. Obscured: a cover line crosses sight-blocking terrain far from both
-// operatives (Kill Team: more than 1" from the attacker's base and more than 2" from the
-// target's). Cover: a cover line crosses terrain close to the target (Kill Team: within
-// 1", void inside 2"). Other operatives never give cover, block sight or obscure. The
-// target must be visible before any cover
-// line is drawn, and the lines start from a base point that can see it: of those, the
-// attacker picks the one that suits it best: not obscured first, then not in cover, then
-// in cover from light terrain only rather than heavy terrain. Distances come
-// from the ruleset. Judged cell by cell, so a nooked operative gets cover from the actual
-// wall beside it, not a whole building.
+// line is unblocked. A target within `cover.voidWithin` of the attacker (Kill Team: 2") is
+// neither obscured nor in cover. Further away: obscured when a cover line crosses
+// sight-blocking terrain far from both operatives (Kill Team: more than 1" from the
+// attacker's base and more than 2" from the target's); in cover when a cover line crosses
+// terrain close to the target (Kill Team: within 1"). Other operatives never give cover,
+// block sight or obscure. The target must be visible before
+// any cover line is drawn, and the lines start from a base point that can see it: of
+// those, the attacker picks the one that suits it best: not obscured first, then not in
+// cover, then in light rather than heavy cover. Distances come from the ruleset. Judged
+// cell by cell, so a nooked operative gets cover from the actual wall beside it, not a
+// whole building.
 export function sightAnalysis(a, b) {
   const rr = BASE_R - 0.02;
   const aPts = perimeterPts(a, 16, rr), bPts = perimeterPts(b, 24, rr);
   const gap = opGap(a, b), half = GRES / 2, nx = G.nx;
-  const { cover, obscure } = RULES, coverOn = gap > cover.voidWithin;
+  const { cover } = RULES, far = gap > cover.voidWithin, obscure = far && RULES.obscure;
   // Visible: any one unblocked line (each walk stops at the first wall). Not visible
   // means nothing else to judge.
   const eyeAt = seeFrom(aPts, bPts);
   if (eyeAt < 0) return {visible: false, gap, coverBy: null, obscBy: null, hardCover: false, from: aPts[0], clearLine: null};
-  // Walk every cover line from (ax, ay) end to end. visit(kind, key, cx, cy, d, line)
-  // hears each cover / obscuring cell, when given. Gives up
-  // (null) as soon as this point can no longer beat `rival`.
+  // Walk every cover line from (ax, ay) end to end. visit(kind, fid, cx, cy, d, line)
+  // hears each cover / obscuring cell, when given. Gives up (null) as soon as this point
+  // can no longer beat `rival`.
   const rank = r => (r.obsc ? 4 : 0) + (r.cover ? 2 : 0) + (r.hard ? 1 : 0);
   const lost = (r, q) => q && rank(r) >= rank(q);
   const linesFrom = (ax, ay, visit, rival) => {
@@ -64,7 +65,7 @@ export function sightAnalysis(a, b) {
         if (c !== C_LIGHT) blocked = true;
         const cx = (k % nx + 0.5) * GRES, cy = ((k / nx | 0) + 0.5) * GRES;
         const dB = dist(cx, cy, b.x, b.y) - BASE_R - half;
-        if (coverOn && dB <= cover.range + 1e-9) {
+        if (far && dB <= cover.range + 1e-9) {
           r.cover = true; if (c !== C_LIGHT) r.hard = true;
           if (visit) visit("cov", G.fid[k], cx, cy, dB, bx, by);
         }
@@ -109,7 +110,7 @@ export function sightAnalysis(a, b) {
     return {id: f.id, kind: f.kind, x: be.x0 - half, y: be.y0 - half, w: be.x1 - be.x0 + GRES, h: be.y1 - be.y0 + GRES,
             at: be.at, line};
   };
-  // hardCover: some cover comes from heavy terrain or a wall, not just light terrain
+  // hardCover: some of the cover is heavy terrain or a wall, not just light terrain
   return {visible: true, gap, coverBy: pick(cov), obscBy: pick(obs), hardCover: best.hard, from: [best.ax, best.ay], clearLine};
 }
 // Index of the first attacker point with an unblocked line to some target point, or -1.
