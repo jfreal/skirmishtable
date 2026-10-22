@@ -18,11 +18,12 @@ export function rollAttack(n, hit, rules) {
   const norm = dice.filter(v => v !== 6 && v !== 1 && v >= hit).length;
   return {dice, crit, norm};
 }
+// cover: falsy, or the cover save kept without rolling: a normal success, or "crit"
 export function rollDefence(save, cover) {
   const rolled = Array.from({length: cover ? 2 : 3}, d6);
-  const crit = rolled.filter(v => v === 6).length;
+  let crit = rolled.filter(v => v === 6).length;
   let norm = rolled.filter(v => v !== 6 && v !== 1 && v >= save).length;
-  if (cover) norm += 1; // banked cover save
+  if (cover === "crit") crit += 1; else if (cover) norm += 1; // banked cover save
   return {dice: rolled, crit, norm, cover};
 }
 export function effHit(op, w) { return Math.min(6, w.hit + (isInjured(op) ? 1 : 0)); }
