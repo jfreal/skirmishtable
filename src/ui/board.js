@@ -242,8 +242,8 @@ function renderOps() {
       el("circle", {cx:px(op.x), cy:px(op.y), r:px(BASE_R+CTRL), fill:"none", stroke:TEAMCOL[op.team],
         "stroke-width":1, "stroke-dasharray":"4 4", opacity:.7}, g);
       el("circle", {cx:px(op.x), cy:px(op.y), r:px(BASE_R)+7, fill:"none", stroke:"#f5e9d8", "stroke-width":2, opacity:.9}, g);
-      // 2″ (red) and the main move's straight-line reach (blue), as on the 3D table
-      for (const [r, col] of [[2, "#d0442c"], [RULES.moves.primary.allow(op), "#4f8fd6"]])
+      // 2″ (red), as on the 3D table
+      for (const [r, col] of [[2, "#d0442c"]])
         el("circle", {cx:px(op.x), cy:px(op.y), r:px(BASE_R + r), fill:"none", stroke:col,
           "stroke-width":1.5, "stroke-dasharray":"6 4", opacity:.75, "pointer-events":"none"}, g);
     }

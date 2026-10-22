@@ -616,8 +616,8 @@ export function sync3DOps() {
       sr.rotation.x = Math.PI / 2; sr.position.set(op.x, 0.05, op.y);
       g.add(sr);
       // range rings, measured from the base edge as the rules do: control range (white),
-      // 2″ (red) and how far its main move reaches in a straight line (blue)
-      for (const [r, col, op_] of [[CTRL, 0xf5e9d8, 0.8], [2, 0xd0442c, 0.75], [RULES.moves.primary.allow(op), 0x4f8fd6, 0.65]]) {
+      // and 2″ (red)
+      for (const [r, col, op_] of [[CTRL, 0xf5e9d8, 0.8], [2, 0xd0442c, 0.75]]) {
         const R = BASE_R + r;
         const ring = new THREE.Mesh(geo(`range ${R}`, () => new THREE.RingGeometry(R - 0.035, R + 0.035, 96)), rangeMat(col, op_));
         ring.rotation.x = -Math.PI / 2; ring.position.set(op.x, 0.03, op.y);
