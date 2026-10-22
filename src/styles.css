@@ -1,0 +1,177 @@
+/* Committed single-theme design: dark ops-console chrome around a paper map board.
+   All colors explicit; page holds on any host ground. */
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: #14110e; color: #e8e2d8;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 13px; line-height: 1.5;
+}
+.app { display: flex; flex-direction: column; min-height: 100vh; }
+header {
+  display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap;
+  padding: 10px 16px; border-bottom: 1px solid #2e2921; background: #191510;
+}
+header h1 {
+  font-family: "Big Shoulders", "Arial Narrow", sans-serif;
+  font-weight: 800; text-transform: uppercase; letter-spacing: .04em;
+  font-size: 22px; margin: 0; color: #e8e2d8;
+}
+header h1 span { color: #e0672f; }
+.hint { color: #9a9184; font-size: 12px; }
+/* The hint changes as you drag. Give it a fixed height so the table below never shifts
+   under a finger mid-drag (on a phone the hint wraps to several lines). */
+header .hint {
+  flex: 1 1 260px; line-height: 1.35; height: calc(2 * 1.35em); overflow: hidden;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+}
+@media (max-width: 760px) { header .hint { height: calc(3 * 1.35em); -webkit-line-clamp: 3; } }
+.main { display: flex; gap: 12px; padding: 12px 16px; flex: 1; align-items: flex-start; flex-wrap: wrap; }
+.boardwrap { flex: 1 1 560px; min-width: 320px; }
+.viewbar { display: flex; gap: 6px; align-items: center; margin-bottom: 8px; }
+.viewbar button { white-space: nowrap; }
+/* fixed height too: the note shows model-loading progress, and must not move the table */
+.viewbar .hint { flex: 1; line-height: 1.35; height: calc(2 * 1.35em); overflow: hidden;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+@media (max-width: 760px) { .viewbar .hint { height: calc(3 * 1.35em); -webkit-line-clamp: 3; font-size: 11px; } }
+#board3d { width: 100%; display: none; border-radius: 6px; overflow: hidden; background: #4a443c; }
+#board3d canvas { display: block; touch-action: none; } /* touches on the table drag or orbit, never scroll the page */
+svg#board { width: 100%; height: auto; display: block; border-radius: 6px; }
+svg#board g[data-oid] { touch-action: none; } /* token touches drag, never scroll */
+aside { flex: 0 1 340px; min-width: 300px; display: flex; flex-direction: column; gap: 10px; }
+
+.panel { background: #1d1914; border: 1px solid #2e2921; border-radius: 8px; padding: 10px 12px; }
+.panel h2 {
+  font-family: "Big Shoulders", sans-serif; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .12em; font-size: 12px; color: #9a9184; margin: 0 0 8px;
+}
+.tray { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; }
+.tray .cell { text-align: center; }
+.tray .v { font-size: 18px; font-weight: 600; }
+.tray .k { font-size: 10px; color: #9a9184; text-transform: uppercase; letter-spacing: .1em; }
+.tray button.mini { padding: 0 7px; font-size: 12px; }
+.teamA { color: #f08a4b; } .teamB { color: #7fb6c9; }
+
+button {
+  font-family: "JetBrains Mono", monospace; font-size: 12px;
+  background: #262019; color: #e8e2d8; border: 1px solid #3a332a;
+  border-radius: 6px; padding: 5px 10px; cursor: pointer;
+}
+button:hover { border-color: #e0672f; color: #f0a276; }
+button:focus-visible { outline: 2px solid #e0672f; outline-offset: 1px; }
+button.active { background: #e0672f; color: #1c120c; border-color: #e0672f; font-weight: 600; }
+button:disabled { opacity: .4; cursor: default; }
+button:disabled:hover { border-color: #3a332a; color: #e8e2d8; }
+button.used { color: #6faf82; border-color: #31402f; background: #1b201a; }
+button.restricted { opacity: .5; }
+.btnrow { display: flex; gap: 6px; flex-wrap: wrap; margin: 6px 0; }
+#mapbtns { display: flex; flex-direction: column; gap: 5px; margin: 6px 0; }
+.maprow { display: flex; gap: 5px; flex-wrap: wrap; align-items: center; }
+.maprow .mapgroup { width: 92px; color: #9a9184; font-size: 11px; letter-spacing: .04em; }
+.maprow button.mini { min-width: 30px; padding: 3px 8px; }
+
+.opname { font-family: "Big Shoulders", sans-serif; font-weight: 800; font-size: 20px; text-transform: uppercase; letter-spacing: .03em; }
+.stats { display: flex; gap: 14px; margin: 6px 0; }
+.stats .v { font-size: 16px; font-weight: 600; }
+.stats .k { font-size: 10px; color: #9a9184; text-transform: uppercase; letter-spacing: .1em; }
+.woundbar { height: 8px; background: #2e2921; border-radius: 4px; overflow: hidden; margin: 4px 0 8px; }
+.woundbar i { display: block; height: 100%; background: #6faf82; border-radius: 4px; }
+.woundbar i.hurt { background: #d3a04a; } .woundbar i.crit { background: #cf4f37; }
+.weapons label { display: flex; gap: 8px; align-items: baseline; cursor: pointer; padding: 2px 0; }
+.weapons .wname { flex: 1; }
+.weapons .wstat { color: #9a9184; font-size: 12px; }
+.tag { display: inline-block; font-size: 10px; text-transform: uppercase; letter-spacing: .08em;
+       border: 1px solid #3a332a; border-radius: 999px; padding: 1px 8px; color: #9a9184; }
+.tag.warn { color: #d3a04a; border-color: #d3a04a; }
+.tag.bad { color: #cf4f37; border-color: #cf4f37; }
+.tag.good { color: #6faf82; border-color: #6faf82; }
+
+#verdict { min-height: 40px; }
+#verdict .big { font-family: "Big Shoulders", sans-serif; font-weight: 800; font-size: 18px; text-transform: uppercase; letter-spacing: .04em; }
+#verdict .why { color: #9a9184; font-size: 12px; }
+.v-valid { color: #6faf82; } .v-cover { color: #d3a04a; } .v-obsc { color: #c9a1e0; }
+.v-novis { color: #cf4f37; }
+
+#shots { font-size: 12px; }
+#shots .shothead { color: #c9bfae; margin-bottom: 4px; }
+#shots .shotlist { list-style: none; margin: 0; padding: 0; max-height: 200px; overflow-y: auto; }
+#shots li { margin: 0 0 3px; line-height: 1.35; }
+#shots li i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; vertical-align: 0; }
+#shots li[data-shot=concealed] i, #shots li[data-shot=hidden] i { background: none !important; border: 1.5px dashed #9a9184; width: 6px; height: 6px; }
+#shots .k-clear { color: #6faf82; } #shots .k-cover { color: #d3a04a; } #shots .k-obscured { color: #c9a1e0; }
+#shots .k-concealed { color: #b8a27a; } #shots .k-hidden { color: #9a9184; }
+#shots .why { color: #8a8174; }
+
+#log { max-height: 220px; overflow-y: auto; font-size: 12px; }
+#log p { margin: 0 0 6px; border-left: 2px solid #3a332a; padding-left: 8px; }
+#log p.hit { border-color: #e0672f; }
+#log .dice { color: #9a9184; }
+#log .crit { color: #e0672f; font-weight: 600; }
+#log b { font-weight: 600; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .hotpulse { animation: hotpulse 1.6s ease-in-out infinite; }
+  @keyframes hotpulse { 0%, 100% { opacity: .5; } 50% { opacity: .95; } }
+}
+footer { padding: 8px 16px 14px; color: #6e675c; font-size: 11px; }
+footer a { color: #b0764f; }
+@media (max-width: 760px) { aside { flex-basis: 100%; } }
+/* Miniatures panel: team per side, then a model per operative */
+.minirow { display: flex; align-items: center; gap: 8px; margin: 6px 0; }
+.minirow select { flex: 1; min-width: 0; }
+.miniops { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 8px; margin: 0 0 8px; font-size: 12px; }
+.miniops label { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.miniops select { flex: 1; min-width: 0; font-size: 12px; }
+/* Play online panel */
+.netline { margin: 2px 0 4px; }
+#netlink, #sharelink { flex: 1; min-width: 0; background: #262019; color: #e8e2d8; border: 1px solid #3a332a; border-radius: 4px; padding: 2px 6px; font-size: 12px; }
+#minis select { background: #262019; color: #e8e2d8; border: 1px solid #3a332a; border-radius: 4px; padding: 2px 4px; }
+/* Dice tray: dice sorted into columns by face, as on the TTS dice mat */
+.dicebtns { align-items: center; }
+.dicebtns .dhit { margin-left: auto; font-size: 12px; color: #b9ad9d; }
+.dicebtns select { background: #262019; color: #e8e2d8; border: 1px solid #3a332a; border-radius: 4px; }
+.dgrid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; margin: 6px 0; }
+.dcol { background: #171410; border: 1px solid #2e2921; border-radius: 6px; padding: 4px 2px; text-align: center; min-height: 64px; display: flex; flex-direction: column; }
+.dcol.crit { border-color: #8a6a1f; } .dcol.hit { border-color: #31402f; }
+.dface { font-size: 11px; color: #8d8276; }
+.dpips { display: flex; flex-wrap: wrap; justify-content: center; gap: 2px; flex: 1; align-content: flex-start; padding: 2px 0; }
+.die { width: 20px; height: 20px; padding: 0; font-size: 12px; font-weight: 700; border-radius: 4px; }
+.die.crit { background: #e0a82e; color: #1c120c; border-color: #e0a82e; }
+.die.hit { background: #6faf82; color: #12160f; border-color: #6faf82; }
+.die.miss { background: #2a241d; color: #8d8276; }
+.die.rr { outline: 2px solid #4f8fd6; outline-offset: -2px; }
+.dcount { font-size: 12px; font-weight: 700; color: #e8e2d8; min-height: 14px; }
+.dsum { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.dsum .mini { margin-left: auto; }
+.woundbtns { margin-top: 2px; }
+/* Ops & score panel: mission cards (cut from the mod's card sheets), score sheet, markers */
+.oprow { align-items: center; font-size: 12px; }
+.oprow label, .opside label { display: flex; align-items: center; gap: 4px; }
+#opsbox select, #opsbox input { background: #262019; color: #e8e2d8; border: 1px solid #3a332a; border-radius: 4px; padding: 1px 3px; font-size: 12px; max-width: 150px; }
+.cardrow { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
+.cardthumb { width: 92px; min-height: 60px; border-radius: 4px; background: #171410; border: 1px solid #2e2921; cursor: zoom-in; object-fit: contain; }
+.cardthumb.small { width: 64px; min-height: 40px; }
+.cardthumb:not(.ready) { opacity: .4; }
+.opsides { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 12px; }
+.opside { display: flex; flex-direction: column; gap: 4px; }
+.opscore { width: 100%; border-collapse: collapse; margin: 6px 0; font-size: 12px; text-align: center; }
+.opscore th { color: #8d8276; font-weight: 600; padding: 1px; }
+.opscore td { padding: 1px; }
+.opscore input { width: 30px; text-align: center; }
+.opscore tfoot td { font-size: 15px; }
+#opsbox details { margin: 4px 0; font-size: 12px; }
+#opsbox summary { cursor: pointer; color: #b9ad9d; }
+.tokrow { display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0; }
+.tok { width: 34px; height: 34px; padding: 2px; border-radius: 50%; }
+.tok img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
+.toklist { display: flex; flex-wrap: wrap; gap: 6px; }
+#cardview { position: fixed; inset: 0; background: rgba(10, 8, 6, .82); display: flex; align-items: center; justify-content: center; z-index: 50; cursor: zoom-out; padding: 16px; }
+#cardview figure { margin: 0; max-width: min(92vw, 720px); text-align: center; }
+#cardview img { max-width: 100%; max-height: 80vh; border-radius: 8px; box-shadow: 0 8px 40px #000; }
+#cardview figcaption { color: #e8e2d8; font-size: 13px; margin-top: 8px; }
+.opsides { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.opside label { flex-wrap: wrap; min-width: 0; }
+.opside select { width: 100%; max-width: none; min-width: 0; }
+.opside .cardthumb { width: 100%; max-width: 120px; }
+.oprow { flex-wrap: wrap; }
+/* Wide screens: the table stays in view while the (long) side panel scrolls past it */
+@media (min-width: 900px) { .boardwrap { position: sticky; top: 8px; } }

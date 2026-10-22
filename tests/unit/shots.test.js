@@ -1,0 +1,161 @@
+// Valid shots: base-to-base cover lines, heavy vs light terrain, the cover distance and the
+// Conceal order, judged on small hand-made boards under all three rulesets.
+import { describe, it, expect, afterAll } from 'vitest';
+import * as world from '../../src/engine/world.js';
+import * as sight from '../../src/engine/sight.js';
+import * as shots from '../../src/engine/shots.js';
+import * as rules from '../../src/rules/index.js';
+import * as config from '../../src/config.js';
+import { perimeterPts } from '../../src/engine/geometry.js';
+
+afterAll(() => rules.setRuleset('killteam'));
+// a bare 24" x 12" board with just the given terrain rects
+const board = (...terrain) => world.buildWorld({
+  name: 'test', w: 24, h: 12, objectives: [],
+  terrain: terrain.map((t, i) => ({id: t.id || `${t.kind} ${i + 1}`, z: 3, ...t})),
+  spawns: [[[1, 1]], [[23, 11]]],
+});
+const use = id => rules.setRuleset(id);
+const op = (x, y, order = 'engage') => ({x, y, order});
+const kind = (a, b) => shots.judgeShot(a, b).kind;
+
+// Attacker on the left, target 9" to its right, on the same row.
+const A = op(3, 6), B = op(12, 6);
+const heavyWall = {kind: 'heavy', x: 7, y: 3, w: 1, h: 6};          // hides the whole target
+const heavyPart = {kind: 'heavy', x: 7, y: 5.9, w: 1, h: 3.1};      // cuts across the lower half, far from both
+const lightPart = {...heavyPart, kind: 'light'};
+const lightNear = {kind: 'light', x: 11, y: 5, w: 0.3, h: 2};       // right in front of the target
+const heavyNear = {kind: 'heavy', x: 11, y: 6.1, w: 0.3, h: 2};     // low wall beside the target, part of it
+
+describe('Kill Team (2024) shots', () => {
+  it('open ground is a clear shot', () => {
+    use('killteam'); board();
+    const j = shots.judgeShot(A, B);
+    expect(j.kind).toBe('clear');
+    expect(j.sight.visible).toBe(true);
+    expect(j.line).toBeTruthy();
+    expect(j.range).toBeCloseTo(9 - 2 * 0.551, 2);
+  });
+
+  it('heavy terrain across every line means no line of sight', () => {
+    use('killteam'); board(heavyWall);
+    expect(kind(A, B)).toBe('hidden');
+  });
+
+  it('heavy terrain crossing some cover lines, far from both, obscures', () => {
+    use('killteam'); board(heavyPart);
+    const j = shots.judgeShot(A, B);
+    expect(j.kind).toBe('obscured');
+    expect(j.sight.visible).toBe(true);
+    expect(j.sight.coverBy).toBeNull();
+    // the deciding line runs from the chosen attacker point to the target's base
+    expect(j.line[0]).toEqual(j.sight.from);
+    expect(Math.hypot(j.line[1][0] - B.x, j.line[1][1] - B.y)).toBeLessThan(0.6);
+  });
+
+  it('the same footprint as light terrain neither blocks nor obscures', () => {
+    use('killteam'); board(lightPart);
+    expect(sight.lineBlocked(3, 6.5, 12, 6.5)).toBe(false);
+    expect(kind(A, B)).toBe('clear');
+  });
+
+  it('light terrain within 1" of the target gives cover', () => {
+    use('killteam'); board(lightNear);
+    const j = shots.judgeShot(A, B);
+    expect(j.kind).toBe('cover');
+    expect(j.sight.coverBy.kind).toBe('light');
+    expect(j.sight.obscBy).toBeNull();
+  });
+
+  it('heavy terrain within 1" of the target gives cover, not obscuring', () => {
+    use('killteam'); board(heavyNear);
+    expect(kind(A, B)).toBe('cover');
+  });
+
+  it('terrain 1" or more from the target gives no cover', () => {
+    use('killteam'); board({...lightNear, x: 9.8});        // 1.1" from the base edge
+    expect(kind(A, B)).toBe('clear');
+  });
+
+  it('a Concealed operative in cover is not a valid target; on Engage it is', () => {
+    use('killteam'); board(lightNear);
+    expect(kind(A, op(12, 6, 'conceal'))).toBe('concealed');
+    expect(kind(A, op(12, 6, 'engage'))).toBe('cover');
+    // Conceal without cover is still a clear shot
+    board();
+    expect(kind(A, op(12, 6, 'conceal'))).toBe('clear');
+  });
+
+  it('within 2" there is no cover', () => {
+    use('killteam'); board(lightNear);
+    expect(kind(op(9.2, 6), B)).toBe('clear');               // 1.7" base to base
+  });
+
+  it('the attacker draws cover lines from whichever base point suits it best', () => {
+    // A small light piece south-east of the line A -> B: the lines from A's east edge
+    // cross it, the lines from A's west edge miss it. The attacker picks the west edge.
+    use('killteam'); board({kind: 'light', x: 5.3, y: 7.4, w: 0.5, h: 0.4});
+    const s = sight.sightAnalysis(op(5, 5), op(5, 9));
+    expect(s.coverBy).toBeNull();
+    expect(s.from[0]).toBeLessThan(5.3);
+    expect(kind(op(5, 5), op(5, 9, 'conceal'))).toBe('clear');
+  });
+});
+
+describe('the target must be visible before any line is drawn', () => {
+  const seesFrom = ([ax, ay], o) => perimeterPts(o, 24, config.BASE_R - 0.02).some(([bx, by]) => !sight.lineBlocked(ax, ay, bx, by));
+
+  it('cover lines start from a base point that can see the target', () => {
+    // Volkus AO 2: from here the only point that dodges the obscuring wall can't see B2 at all
+    use('killteam'); world.initMaps(); world.buildWorld(world.MAPS.v2);
+    const b2 = world.OPS.find(o => o.id === 'B2');
+    const j = shots.judgeShot(op(6.8, 5.6), b2);
+    expect(j.sight.visible).toBe(true);
+    expect(seesFrom(j.sight.from, b2)).toBe(true);
+    expect(j.line[0]).toEqual(j.sight.from);
+  });
+
+  it('an enemy that is not visible gets no line at all', () => {
+    use('killteam'); board(heavyWall);
+    const j = shots.judgeShot(A, B);
+    expect(j.kind).toBe('hidden');
+    expect(j.line).toBeNull();
+  });
+});
+
+describe('the other rulesets', () => {
+  it('Infinity-style: no obscuring, cover only from terrain within ½"', () => {
+    use('infinity'); board(heavyPart);
+    expect(kind(A, B)).toBe('clear');
+    board(lightNear);
+    expect(kind(A, B)).toBe('cover');
+    expect(kind(A, op(12, 6, 'conceal'))).toBe('cover');     // no orders in this ruleset
+    board({...lightNear, x: 10.4});                           // ~0.6" away
+    expect(kind(A, B)).toBe('clear');
+  });
+
+  it('Ashfall: cover within 2", obscured beyond 3", no orders', () => {
+    use('ashfall'); board({kind: 'light', x: 9.5, y: 5, w: 0.3, h: 2});
+    expect(kind(A, op(12, 6, 'conceal'))).toBe('cover');
+    board(heavyPart);
+    expect(kind(A, B)).toBe('obscured');
+  });
+});
+
+describe('shotsFrom', () => {
+  it('judges every live enemy from the eye point, and reuses the answer while nothing moves', () => {
+    use('killteam'); board(lightNear);
+    world.OPS.splice(0, world.OPS.length,
+      {...op(3, 6), id: 'A1', team: 0, alive: true},
+      {...op(12, 6, 'conceal'), id: 'B1', team: 1, alive: true},
+      {...op(12, 2), id: 'B2', team: 1, alive: true},
+      {...op(20, 6), id: 'B3', team: 1, alive: false},
+      {...op(3, 9), id: 'A2', team: 0, alive: true});
+    const eye = {x: 3, y: 6, team: 0};
+    const list = shots.shotsFrom(eye);
+    expect(list.map(s => [s.target.id, s.kind])).toEqual([['B1', 'concealed'], ['B2', 'clear']]);
+    expect(shots.shotsFrom({...eye})).toBe(list);
+    world.OPS[1].order = 'engage';
+    expect(shots.shotsFrom(eye).map(s => s.kind)).toEqual(['cover', 'clear']);
+  });
+});

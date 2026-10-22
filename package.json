@@ -1,0 +1,32 @@
+{
+  "name": "skirmishtable",
+  "version": "0.28.0",
+  "private": true,
+  "description": "Browser tabletop for skirmish wargames with pluggable rulesets (Kill Team, Infinity-style, Ashfall): a playable 3D table with terrain traced from Tabletop Simulator scans, auto-pathing movement with climbing, and line-of-sight/cover judgement.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "build:artifact": "vite build --mode artifact --outDir dist-artifact && node scripts/strip-skeleton.mjs dist-artifact/index.html && node -e \"const fs=require('fs');fs.rmSync('dist-artifact/models',{recursive:true,force:true});fs.rmSync('dist-artifact/meshpack.json',{force:true})\"",
+    "preview": "vite preview --port 4173 --strictPort",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "npm run build && playwright test",
+    "export:maps": "node scripts/export-maps.mjs",
+    "tts:sources": "node scripts/tts-sources.mjs",
+    "tts:teams": "node scripts/tts-teams.mjs",
+    "tts:ops": "node scripts/tts-ops.mjs",
+    "fetch:saves": "node scripts/fetch-saves.mjs"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0",
+    "vite": "8.3.1",
+    "vitest": "5.0.3"
+  },
+  "engines": {
+    "node": ">=20.19"
+  },
+  "dependencies": {
+    "trystero": "0.26.0"
+  }
+}

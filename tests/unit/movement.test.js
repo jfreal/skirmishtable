@@ -1,0 +1,117 @@
+// Movement rules: whole-inch increments, climbing costs and timing, nooks, and route
+// validity on every map.
+import { describe, it, expect, beforeAll } from 'vitest';
+import * as world from '../../src/engine/world.js';
+import * as grid from '../../src/engine/grid.js';
+import * as mv from '../../src/engine/movement.js';
+
+beforeAll(() => world.initMaps());
+const total = p => mv.pathTotalInches(p);
+const climbs = p => p.filter(q => q[2]).map(q => q[2]);
+
+describe('climb costs (core rules)', () => {
+  it('up = height (at least 2"), down = height past the free 2", walking legs cost nothing extra', () => {
+    expect([1, 2, 3, 4].map(h => [mv.climbUp(h), mv.climbDown(h), mv.climbCost(h)]))
+      .toEqual([[2, 0, 2], [2, 0, 2], [3, 1, 4], [4, 2, 6]]);
+    expect(mv.climbCost(0)).toBe(0);
+  });
+});
+
+describe('hand-made Volkus Ruins', () => {
+  beforeAll(() => world.buildWorld(world.MAPS.volkus));
+
+  it('climbs straight over a 2" wall section: 2" across + 2" up + 0" down = 4"', () => {
+    const p = mv.findPath(8.9, 7.0, 10.9, 7.0, 0, 6);
+    expect(climbs(p)).toEqual([2]);
+    expect(total(p)).toBe(4);
+  });
+
+  it('a Dash can never climb, so the same trip walks round', () => {
+    const p = mv.findPath(8.9, 7.0, 10.9, 7.0, 0, -1);
+    expect(climbs(p)).toEqual([]);
+    expect(total(p)).toBe(10);
+  });
+
+  it('round a wall end in square turns rather than many short (each full-inch) legs', () => {
+    const p = mv.findPath(9.139, 4.75, 10.611, 4.75, 0, 6);
+    expect(total(p)).toBe(6);
+    expect(p.length).toBeLessThanOrEqual(5);
+  });
+
+  it('route cost always equals the sum of its drawn increments', () => {
+    const p = mv.findPath(2, 2, 12, 20, 0, 6);
+    expect(total(p)).toBe(mv.chopIncrements(p).reduce((a, s) => a + s.cost, 0));
+  });
+});
+
+describe('Volkus AO 1 (scanned terrain)', () => {
+  beforeAll(() => world.buildWorld(world.MAPS.v1));
+
+  it('walks into the stronghold corner nook', () => {
+    const p = mv.findPath(10.71, 7.48, 12.05, 4.25, 0, 6, 9);
+    expect(p.partial).toBeFalsy();
+    expect(total(p)).toBe(5);
+    expect(grid.ptFree(12.05, 4.25)).toBe(true);
+  });
+
+  it('climbs over the low wall into the stronghold (2" up, nothing down)', () => {
+    const p = mv.findPath(15.55, 4.25, 12.05, 4.25, 0, 6, 9);
+    expect(climbs(p)).toEqual([2]);
+    expect(total(p)).toBe(6);
+  });
+
+  it('cannot get inside without climbing — a Dash-only move stops short', () => {
+    const p = mv.findPath(15.55, 4.25, 12.05, 4.25, 0, -1, 3);
+    expect(p.partial).toBe(true);
+    expect(climbs(p)).toEqual([]);
+  });
+
+  it('dashes first when the Reposition is needed for a later climb', () => {
+    const repoFirst = mv.findPath(1.9, 4.75, 6.9, 4.75, 0, 6, 9);
+    const dashFirst = mv.findPath(1.9, 4.75, 6.9, 4.75, 3, 9, 9);
+    expect(repoFirst.partial || total(repoFirst) > 9).toBe(true);
+    expect(dashFirst.partial).toBeFalsy();
+    expect(climbs(dashFirst)).toEqual([2]);
+    expect(total(dashFirst)).toBe(8);
+  });
+});
+
+describe('random routes on every map are legal', () => {
+  for (const key of ['v1', 'v2', 'v3', 'v4', 'v5', 'v6', 'y1', 'y2', 'y3', 'y4', 'y5', 'y6', 'volkus', 'gd1', 'gd2']) {
+    it(key, () => {
+      world.buildWorld(world.MAPS[key]);
+      let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+      let checked = 0;
+      for (let s = 0; s < 4; s++) {
+        let sx, sy;
+        do { sx = 1 + rnd() * (world.BW - 2); sy = 1 + rnd() * (world.BH - 2); } while (!grid.ptFree(sx, sy));
+        for (const [lo, hi, cap] of [[0, 6, 9], [3, 9, 9], [0, -1, 3]]) {
+          for (let q = 0; q < 6; q++) {
+            const gx = Math.max(0.6, Math.min(world.BW - 0.6, sx + (rnd() - 0.5) * 18));
+            const gy = Math.max(0.6, Math.min(world.BH - 0.6, sy + (rnd() - 0.5) * 18));
+            if (!grid.ptFree(gx, gy)) continue;
+            const raw = mv.findPath(sx, sy, gx, gy, lo, hi, cap);
+            if (!raw) continue;
+            mv.straightenIncrements(raw);
+            const { path: p, total: t } = mv.clampPath(raw, cap);
+            expect(t).toBeLessThanOrEqual(cap);
+            expect(mv.pathTotalInches(p)).toBe(mv.chopIncrements(p).reduce((a, st) => a + st.cost, 0));
+            for (let i = 1; i < p.length; i++) {
+              if (p[i][2]) {
+                expect(hi).toBeGreaterThanOrEqual(0);                                   // never climb in a Dash
+                const z = mv.crossingHeight(p[i - 1][0], p[i - 1][1], p[i][0], p[i][1]);
+                expect(Number.isFinite(z) && z > 0).toBe(true);
+              } else {
+                expect(grid.segFree(p[i - 1][0], p[i - 1][1], p[i][0], p[i][1], i === 1 ? grid.startTol(sx, sy) : 0)).toBe(true);
+              }
+            }
+            const end = p[p.length - 1];
+            expect(grid.ptFree(end[0], end[1])).toBe(true);
+            checked++;
+          }
+        }
+      }
+      expect(checked).toBeGreaterThan(20);
+    });
+  }
+});

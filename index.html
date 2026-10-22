@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SkirmishTable</title>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders:opsz,wght@10..72,500;10..72,700;10..72,800&family=JetBrains+Mono:wght@400;600&display=swap">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://unpkg.com/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+</head>
+<body>
+
+<div class="app">
+<header>
+  <h1>Skirmish<span>Table</span></h1>
+  <span class="hint" id="hint">Drag an operative to move — the app paths around or over terrain and prices the move by the current rules.</span>
+</header>
+
+<div class="main">
+  <div class="boardwrap">
+    <div class="viewbar">
+      <button id="view3d" class="mini active" title="The table in 3D — scanned TTS terrain where available. Drag operatives to move them; drag the table to orbit.">3D table</button>
+      <button id="view2d" class="mini" title="Top-down map with the ruler and line-of-sight shadows">2D map</button>
+      <button id="view3dtop" class="mini" style="display:none" title="Look straight down at the table (click again for the angled view)">Top-down</button>
+      <span class="hint" id="v3dnote"></span>
+      <button id="loadtts" class="mini" style="display:none" title="Download the exact Tabletop Simulator scans and textures from the Steam Workshop CDN into this browser. This site doesn't host them.">Load from Steam</button>
+    </div>
+    <svg id="board" viewBox="0 0 960 704" aria-label="Top-down wargame table, 30 by 22 inches"></svg>
+    <div id="board3d"></div>
+  </div>
+
+  <aside>
+    <div class="panel">
+      <h2>Battle tray</h2>
+      <div class="tray">
+        <div class="cell"><div class="v" id="tpv">1</div><div class="k">Turning pt</div></div>
+        <div class="cell"><div class="v teamA" id="cpa">3</div><div class="k">CP · Ash</div></div>
+        <div class="cell"><div class="v teamB" id="cpb">3</div><div class="k">CP · Slate</div></div>
+        <div class="cell"><div class="v teamA" id="vpa">0</div><div class="k">VP · Ash</div></div>
+        <div class="cell"><div class="v teamB" id="vpb">0</div><div class="k">VP · Slate</div></div>
+        <button class="mini" id="endtp" title="Ready all operatives, next turning point">End TP</button>
+        <button class="mini" id="undo" title="Undo last committed action">Undo</button>
+        <button class="mini" id="reset">Reset</button>
+        <button class="mini" id="rulerbtn" title="Free measurement: click two points">Ruler</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Dice</h2>
+      <div id="dicetray"></div>
+    </div>
+
+    <div class="panel">
+      <h2>Ops &amp; score</h2>
+      <div id="opsbox"></div>
+    </div>
+
+    <div class="panel">
+      <h2>Play online</h2>
+      <div id="netbox"></div>
+      <div id="sharebox"></div>
+    </div>
+
+    <div class="panel">
+      <h2>Rules</h2>
+      <div class="btnrow" id="rulebtns"></div>
+      <div class="hint" id="rulenote"></div>
+    </div>
+
+    <div class="panel">
+      <h2>Map <span class="tag" id="buildtag" title="Which build of SkirmishTable this is" style="margin-left:6px;letter-spacing:.06em">build 28 · touch drags fixed</span></h2>
+      <div id="mapbtns"></div>
+      <div class="btnrow">
+        <button class="mini" id="importbtn" title="Open a Tabletop Simulator save (.json) or WorkshopUpload (BSON) containing a Gallowdark map">Import TTS map…</button>
+        <input type="file" id="importfile" style="display:none">
+      </div>
+      <div class="hint" id="mapnote"></div>
+    </div>
+
+    <div class="panel">
+      <h2>Miniatures</h2>
+      <div id="minis"></div>
+    </div>
+
+    <div class="panel" id="oppanel">
+      <h2>Operative</h2>
+      <div id="opcard"><span class="hint">Nothing selected.</span></div>
+    </div>
+
+    <div class="panel">
+      <h2>Valid shots</h2>
+      <div id="shots"><span class="hint">Select or drag an operative to see what it could shoot.</span></div>
+    </div>
+
+    <div class="panel">
+      <h2>Verdict</h2>
+      <div id="verdict"><span class="hint">Select an operative, press Target, then click an enemy.</span></div>
+    </div>
+
+    <div class="panel">
+      <h2>Log</h2>
+      <div id="log"></div>
+    </div>
+  </aside>
+</div>
+
+<footer>
+  Assisted-sandbox mock — the app measures, judges line of sight &amp; cover, and rolls the dice pipelines; players stay in charge of legality. Movement: drag an operative — the route auto-paths around or over terrain, drawn as its actual increments: straight steps of at most 1", direction changes only between steps; a hollow node marks a short step that still costs the full inch. On the Volkus maps every ruin is traced from its Tabletop Simulator scan at 0.1": walls, doorways, alcoves and the ground under upper floors (blue hatch) are real space, so you can nook an operative into terrain wherever a 28mm base actually fits — and cover is judged from the exact wall beside it. Walls vary in height along their length (darker = taller; hover for the height) — low broken stretches (green) are the cheap place to climb. Any wall or rubble can be climbed up and over, shown as amber rungs: it costs the climb up (at least 2"), the drop back down (the first 2" of a drop are free), and the distance across. Each operative carries an order token like the physical game: white spiked starburst = Engage (with a hot pulsing glow), white dome = Conceal; double-click an operative to flip its order. The token turns to its dark face when the operative is expended, and an operative's colour drains to grey once it has moved. Climbs spend Reposition/Charge movement only, never Dash — and if a climb won't fit with Reposition first, the planner automatically dashes first and saves the Reposition for the climb (spare dash inches at the wall are burned as "wait"). Hover any piece for its rules. Dragging past the Reposition allowance flows straight into the Dash (blue route turns violet at the handover) and costs both actions; the drag hard-stops at the combined limit. While an operative is selected or moving, walls and heavy terrain cast subtle shadows showing what it can't see; every enemy is marked with how a shot at it would be judged — green = clear shot, amber = valid but in cover, violet = obscured, dashed = not a valid target (Conceal + cover) or not visible — with the sight line that decides it (a dot marks where it crosses the cover), and the Valid shots panel lists them. Cover lines run from one point of the shooter's base (the best one for the shooter) to every part of the target's base: heavy terrain more than 1" from both obscures, any terrain within 1" of the target gives cover. While dragging, all of this previews from the landing spot, not the current position. Unofficial fan prototype; Kill Team © Games Workshop.
+</footer>
+</div>
+
+<script type="module" src="/src/main.js"></script>
+</body>
+</html>
