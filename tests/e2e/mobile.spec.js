@@ -39,7 +39,7 @@ let errors;
 test.beforeEach(async ({ page }) => {
   errors = [];
   page.on('pageerror', e => errors.push(e.message));
-  await page.goto('/');
+  await page.goto('/?deploy=zones');   // drop-zone deployment: the tests expect open table, not the random demo scatter
   await page.waitForFunction(() => window.skirmishtable && skirmishtable.world.MAP && skirmishtable.table3d.three);
 });
 test.afterEach(() => expect(errors).toEqual([]));

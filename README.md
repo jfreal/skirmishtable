@@ -223,8 +223,8 @@ Taken from how players run Kill Team in Tabletop Simulator:
   dice there too. Every roll goes to the log.
 - **Wounds**: a counter over each model (3D) and under each token (2D), green → amber when
   injured → red; −1 W / +1 W on the operative card logs "[12/15] Name took damage".
-- **Range rings** round the selected operative: control range (white), 2″ (red) and its main
-  move's straight-line reach (blue), measured from the base edge.
+- **Range rings** round the selected operative: control range (white) and 2″ (red), measured
+  from the base edge.
 - **Ops & score** panel: the season (Approved Ops 2025 / 2024), the Crit Op (pick or draw),
   each side's Tac Op and Primary, the Kill Op, a VP sheet per turning point (Crit / Tac / Kill,
   Primary counted again at half), initiative cards, the universal equipment cards, and

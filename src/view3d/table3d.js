@@ -6,11 +6,12 @@
  * rules); dragging empty table orbits the camera.
  */
 import { state } from '../state.js';
-import { BASE_R, CTRL, OBJ_R, TEAMCOL, TEAMGREY } from '../config.js';
+import { BASE_R, CTRL, ENGAGE_COL, OBJ_R, TEAMCOL, TEAMGREY } from '../config.js';
 import { BH, BW, DECOR, DROPZONES, MAP, OBJECTIVES, OPS, TERRAIN } from '../engine/world.js';
 import { chopIncrements, climbDown, climbUp } from '../engine/movement.js';
 import { RULES, fmtIn } from '../rules/index.js';
 import { MARKER_R, SHOT_COL, dragLabelText, shotEye } from '../ui/board.js';
+import { engagements } from '../engine/engage.js';
 import { opsState, placeMarkerAt } from '../ui/ops.js';
 import { TTS_OPS } from '../data/tts-ops.js';
 import { hint } from '../ui/dom.js';
@@ -299,6 +300,15 @@ function targetLines(g) {
   geo.setAttribute("color", new THREE.Float32BufferAttribute(cols, 3));
   g.add(new THREE.LineSegments(geo, new THREE.LineBasicMaterial({vertexColors: true, transparent: true, opacity: 0.8})));
 }
+const ENGAGE_HEX = parseInt(ENGAGE_COL.slice(1), 16);
+const TRAIL_HEX = 0xe8822e;   // faint orange: the base's path and its outline per increment
+// the red ring round a model in (or about to be in) engagement range
+function engageRing(g, x, y) {
+  const ring = new THREE.Mesh(torus(BASE_R + 0.34, 0.09, 40), flatMat(ENGAGE_HEX));
+  ring.rotation.x = Math.PI / 2; ring.position.set(x, 0.1, y);
+  ring.userData.engaged = true;
+  g.add(ring);
+}
 export function sync3DOverlay() {
   if (!three) return;
   const g = three.overlayGroup;
@@ -308,9 +318,27 @@ export function sync3DOverlay() {
   if (d && d.active && d.goal) {
     const lift = 0.07;
     if (d.path) {
-      const colorOf = t => t === "dash" ? 0x8d5fa8 : 0x2a4f9e;
+      const colorOf = t => t === "dash" ? 0x8d5fa8 : t === "charge" ? ENGAGE_HEX : 0x2a4f9e;
+      // the ground the base sweeps (as wide as the base) and a faint base outline at every
+      // increment, as on the 2D map
+      const steps = chopIncrements(d.path), R = BASE_R;
+      for (const st of steps) {
+        if (!st.climb) {
+          const L = Math.hypot(st.x2 - st.x1, st.y2 - st.y1);
+          if (L > 1e-6) {
+            const band = new THREE.Mesh(geo("trailbox", () => new THREE.PlaneGeometry(1, 1)), rangeMat(TRAIL_HEX, 0.16));
+            band.scale.set(2 * R, L, 1);
+            band.rotation.set(-Math.PI / 2, Math.atan2(st.x2 - st.x1, st.y2 - st.y1), 0, "YXZ");   // lay flat, then turn along the leg
+            band.position.set((st.x1 + st.x2) / 2, 0.025, (st.y1 + st.y2) / 2);
+            g.add(band);
+          }
+        }
+        const out = new THREE.Mesh(geo(`range ${R}`, () => new THREE.RingGeometry(R - 0.035, R + 0.035, 96)), rangeMat(TRAIL_HEX, 0.6));
+        out.rotation.x = -Math.PI / 2; out.position.set(st.x2, 0.03, st.y2);
+        g.add(out);
+      }
       let inch = 0;
-      for (const st of chopIncrements(d.path)) {
+      for (const st of steps) {
         inch += st.cost;
         const hex = inch <= d.primAllow + 1e-9 || !d.p2 ? colorOf(d.p1.type) : colorOf(d.p2.type);
         if (st.climb) {
@@ -338,6 +366,15 @@ export function sync3DOverlay() {
     const ring = new THREE.Mesh(torus(BASE_R + 0.08, 0.05, 32), flatMat(d.valid && d.path ? 0xf5e9d8 : 0xcf4f37));
     ring.rotation.x = Math.PI / 2; ring.position.set(d.goal[0], 0.06, d.goal[1]);
     g.add(ring);
+    // the ghost's engagement range: lights up red, with a ring on every enemy inside it
+    const foes = d.foes || [], hot = foes.length > 0, R = BASE_R + CTRL;
+    const er = new THREE.Mesh(geo(`range ${R}`, () => new THREE.RingGeometry(R - 0.035, R + 0.035, 96)), rangeMat(hot ? ENGAGE_HEX : 0xf5e9d8, hot ? 0.95 : 0.6));
+    er.rotation.x = -Math.PI / 2; er.position.set(d.goal[0], 0.035, d.goal[1]);
+    g.add(er);
+    if (hot) {
+      engageRing(g, d.goal[0], d.goal[1]);
+      for (const f of foes) engageRing(g, f.x, f.y);
+    }
     const label = cachedText(d.path ? dragLabelText() : "blocked", d.valid && d.path ? "#f5e9d8" : "#ffb4a6", "rgba(20,17,14,0.82)", 0.8);
     label.position.set(d.goal[0], 2.6, d.goal[1]);
     g.add(label);
@@ -546,6 +583,10 @@ export function sync3DOps() {
     disc.position.set(m.x, 0.04, m.y);
     g.add(disc);
   }
+  for (const [a, b] of engagements()) {   // engaged pairs: a red ring round both and a line between
+    ribbon(g, a.x, a.y, 0.1, b.x, b.y, 0.1, 0.07, ENGAGE_HEX);
+    engageRing(g, a.x, a.y); engageRing(g, b.x, b.y);
+  }
   for (const op of OPS) {
     if (!op.alive) continue;
     const moved = op.used.some(u => u === "reposition" || u === "dash" || u === "charge");
@@ -575,8 +616,8 @@ export function sync3DOps() {
       sr.rotation.x = Math.PI / 2; sr.position.set(op.x, 0.05, op.y);
       g.add(sr);
       // range rings, measured from the base edge as the rules do: control range (white),
-      // 2″ (red) and how far its main move reaches in a straight line (blue)
-      for (const [r, col, op_] of [[CTRL, 0xf5e9d8, 0.8], [2, 0xd0442c, 0.75], [RULES.moves.primary.allow(op), 0x4f8fd6, 0.65]]) {
+      // and 2″ (red)
+      for (const [r, col, op_] of [[CTRL, 0xf5e9d8, 0.8], [2, 0xd0442c, 0.75]]) {
         const R = BASE_R + r;
         const ring = new THREE.Mesh(geo(`range ${R}`, () => new THREE.RingGeometry(R - 0.035, R + 0.035, 96)), rangeMat(col, op_));
         ring.rotation.x = -Math.PI / 2; ring.position.set(op.x, 0.03, op.y);

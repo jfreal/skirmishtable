@@ -7,6 +7,7 @@ import { state } from '../state.js';
 import { BASE_R, CTRL, S } from '../config.js';
 import { dist, opGap } from '../engine/geometry.js';
 import { clampPath, climbDown, climbUp, findPath, placeBlocked, straightenIncrements } from '../engine/movement.js';
+import { foesNear } from '../engine/engage.js';
 import { sightAnalysis } from '../engine/sight.js';
 import { BH, BW, OPS } from '../engine/world.js';
 import { RULES, fmtIn, moveSpec } from '../rules/index.js';
@@ -45,7 +46,7 @@ export function armDrag(op, ev, from3d = false) {
 // move sits in the plan — so if a climb won't fit with the main move first, the planner
 // tries the secondary move first and saves the main move for the climb (arriving at
 // the wall early burns the spare inches as "wait").
-function plansFor(op) {
+function plansFor(op, type = state.moveType) {
   const M = RULES.moves, used = t => op.used.includes(t);
   const phase = (type, spec) => ({type, allow: spec.allow(op), climb: spec.climb});
   const prim = phase("reposition", M.primary), sec = phase("dash", M.secondary);
@@ -58,17 +59,25 @@ function plansFor(op) {
     return {p1, p2, lo, hi, cap};
   };
   const primAvail = !used("reposition") && !used("charge"), secAvail = !used("dash");
-  if (state.moveType === "charge" && M.charge) return [plan(phase("charge", M.charge), null)];
-  if (state.moveType === "dash") return primAvail ? [plan(sec, prim)] : [plan(sec, null)];
+  if (type === "charge" && M.charge) return [plan(phase("charge", M.charge), null)];
+  if (type === "dash") return primAvail ? [plan(sec, prim)] : [plan(sec, null)];
   return secAvail ? [plan(prim, sec), plan(sec, prim)] : [plan(prim, null)];
 }
+
+// A Charge can't share an activation with another move (and isn't repeated).
+const mayCharge = op => !!RULES.moves.charge && !["reposition", "dash", "charge"].some(t => op.used.includes(t));
 
 // re-plan the active drag towards board point (x, y)
 function planDrag(x, y) {
   const d = state.drag;
   const gx = Math.min(BW - BASE_R, Math.max(BASE_R, x));
   const gy = Math.min(BH - BASE_R, Math.max(BASE_R, y));
-  const plans = plansFor(d.op);
+  // Engagement range: a normal move can't end within control range of an enemy, so
+  // dragging there turns the move into a Charge (Move + 2″, 1AP) when one is allowed.
+  const intoFoes = foesNear(gx, gy, d.op.team, d.op.id).length > 0;
+  const charging = state.moveType === "charge" || (intoFoes && mayCharge(d.op));
+  d.autoCharge = charging && state.moveType !== "charge";
+  const plans = plansFor(d.op, charging ? "charge" : state.moveType);
   const free = !placeBlocked(gx, gy, d.op.id);
   let bestPlan = null;
   if (free) for (const pl of plans) {
@@ -92,9 +101,15 @@ function planDrag(x, y) {
     d.primAllow = pl.p1.allow;
     d.secondary = pl.p2 ? pl.p2.type : null;
     d.secAllow = pl.p2 ? pl.p2.allow : 0;
-    d.valid = !placeBlocked(end[0], end[1], d.op.id);
+    d.foes = foesNear(end[0], end[1], d.op.team, d.op.id);
+    d.why = placeBlocked(end[0], end[1], d.op.id) ? "occupied"
+      : charging && !d.foes.length ? "a Charge must end within engagement range"
+      : !charging && d.foes.length && RULES.moves.charge ? "engagement range — can't Charge after moving"
+      : null;
+    d.valid = !d.why;
   } else {
     d.path = null; d.goal = [gx, gy]; d.total = 0; d.clamped = false; d.valid = false; d.partial = false;
+    d.foes = []; d.why = "blocked";
     d.p1 = plans[0].p1; d.p2 = plans[0].p2;
     d.primAllow = plans[0].p1.allow; d.secondary = null; d.secAllow = 0;
   }
@@ -104,7 +119,9 @@ function planDrag(x, y) {
 // pointerup after an active drag: land the operative and log the move
 function landDrag(d) {
   if (!d.valid || !d.path || !d.goal) {
-    hint("No landing there — blocked or unreachable. Move cancelled.");
+    hint(d.why && d.why !== "blocked" && d.why !== "occupied"
+      ? `No landing there — ${d.why}. Move cancelled.`
+      : "No landing there — blocked or unreachable. Move cancelled.");
     renderAll(); return;
   }
   const chained = d.total > d.primAllow + 1e-9 && d.p2;
@@ -112,6 +129,11 @@ function landDrag(d) {
   const climbed = d.path.some(p => p[2]);
   snapshot();
   d.op.x = d.goal[0]; d.op.y = d.goal[1];
+  const charged = d.p1.type === "charge";
+  if (charged && RULES.orders && d.op.order === "conceal") {   // only an operative on Engage may charge
+    d.op.order = "engage";
+    logLine(`<b>${d.op.name}</b> flips to ▲ Engage to charge.`);
+  }
   d.op.ap -= chained ? 2 : 1;
   d.op.used.push(d.p1.type);
   if (chained) d.op.used.push(d.p2.type);
@@ -122,11 +144,14 @@ function landDrag(d) {
     ? `<b>${d.op.name}</b> ${verb(d.p1.type)} ${fmtIn(d.primAllow)}" then ${verb(d.p2.type)} ${fmtIn(d.total - d.primAllow)}" (2AP)${climbNote}${repeatNote}.`
     : `<b>${d.op.name}</b> ${verb(d.p1.type)} ${fmtIn(d.total)}" (${fmtIn(d.primAllow)}" allowed)${climbNote}${repeatNote}.`);
   const enemies = OPS.filter(o => o.alive && o.team !== d.op.team && opGap(d.op, o) <= CTRL);
-  if (enemies.length) logLine(`${d.op.name} is now in control range of ${enemies.map(e => e.name).join(", ")}.`);
+  if (enemies.length) logLine(`${d.op.name} is now in engagement range of ${enemies.map(e => e.name).join(", ")}.`);
   // auto-advance to the other movement of the activation: main move ①, then secondary ②
   const M = RULES.moves;
   const slot1Used = d.op.used.includes("reposition") || d.op.used.includes("charge");
-  if (state.moveType !== "dash" && !d.op.used.includes("dash")) {
+  if (charged) {
+    state.moveType = "reposition";
+    hint(`${d.op.name} charged into ${enemies.map(e => e.name).join(", ")} — Fight!`);
+  } else if (state.moveType !== "dash" && !d.op.used.includes("dash")) {
     state.moveType = "dash";
     hint(`${d.op.name}: movement ② still available — drag again to ${M.secondary.label} ${fmtIn(M.secondary.allow(d.op))}".`);
   } else if (state.moveType === "dash" && !slot1Used) {
@@ -189,7 +214,7 @@ export function wireInput() {
       }
       d.active = true;
       if (state.sel !== d.op) { state.sel = d.op; state.target = null; state.lastSight = null; state.moveType = defaultMoveType(d.op); }
-      hint(`${d.op.name}: release to ${(moveSpec(state.moveType) || RULES.moves.primary).label.toLowerCase()} — route ${measuring()}.`);
+      hint(`${d.op.name}: release to ${(moveSpec(state.moveType) || RULES.moves.primary).label.toLowerCase()} — route ${measuring()}.${RULES.moves.charge ? ` Ending within ${fmtIn(CTRL)}″ of an enemy makes it a ${RULES.moves.charge.label}.` : ""}`);
       renderAll();
     }
     const p = pickBoard(ev);

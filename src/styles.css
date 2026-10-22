@@ -111,6 +111,8 @@ button.restricted { opacity: .5; }
 @media (prefers-reduced-motion: no-preference) {
   .hotpulse { animation: hotpulse 1.6s ease-in-out infinite; }
   @keyframes hotpulse { 0%, 100% { opacity: .5; } 50% { opacity: .95; } }
+  .engpulse { animation: engpulse 0.9s ease-in-out infinite; }
+  @keyframes engpulse { 0%, 100% { opacity: .55; } 50% { opacity: 1; } }
 }
 footer { padding: 8px 16px 14px; color: #6e675c; font-size: 11px; }
 footer a { color: #b0764f; }

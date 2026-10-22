@@ -77,6 +77,35 @@ export function rosterInit() {
   });
 }
 
+// Demo set-up: most of each side (`count` of 6) moves off its drop zone to random
+// free spots across the board, `covered` of them within `near` (1") of terrain
+// that gives cover, the rest in the open. Never within 2" of an enemy, so nobody starts
+// engaged, but plenty start within charge reach. The rest stay where rosterInit put them.
+export function scatterRoster(rng = Math.random, count = 4, covered = 3, near = 1) {
+  const m = near + 0.25;   // stay clear of the board edge, or the edge would count as "terrain"
+  const okAt = (op, x, y, wantCover) => {
+    if (x < BASE_R + m || x > BW - BASE_R - m || y < BASE_R + m || y > BH - BASE_R - m) return false;
+    const c = clearAt(x, y);
+    if (c < BASE_R + 0.05) return false;                          // the base must fit
+    if (wantCover !== (c - BASE_R <= near)) return false;          // terrain within 1" of the base edge
+    const dz = DROPZONES[1 - op.team];
+    if (x >= dz.x && x <= dz.x + dz.w && y >= dz.y && y <= dz.y + dz.h) return false;
+    return !OPS.some(o => o !== op && o.alive &&
+      dist(o.x, o.y, x, y) < 2 * BASE_R + (o.team === op.team ? 0.3 : 2));
+  };
+  for (const team of [0, 1]) {
+    const side = OPS.filter(o => o.team === team);
+    for (let i = side.length - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); [side[i], side[j]] = [side[j], side[i]]; }
+    side.slice(0, count).forEach((op, k) => {
+      const wantCover = k < covered;
+      for (let tries = 0; tries < 4000; tries++) {
+        const x = rng() * BW, y = rng() * BH;
+        if (okAt(op, x, y, wantCover)) { op.x = +x.toFixed(2); op.y = +y.toFixed(2); return; }
+      }
+    });
+  }
+}
+
 /* ---------- maps & the Tabletop Simulator importer ---------- */
 // Engine side of loading a map — no DOM: the terrain grid and its clearance map, climb
 // portals, drop zones and the starting roster. Headless tests call this directly.
