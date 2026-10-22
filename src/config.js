@@ -19,4 +19,5 @@ export const WPN = {
 export const TEAMNAME = ["Ash", "Slate"];
 export const TEAMCOL  = ["#e0672f", "#5b93a6"];
 export const TEAMCOL_LT = ["#f08a4b", "#7fb6c9"];
+export const ENGAGE_COL = "#e0302a"; // engagement range: the rings round two models about to fight
 export const TEAMGREY = ["#a08a7a", "#83909a"]; // spent: colour drains once an operative has moved

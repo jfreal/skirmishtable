@@ -2,11 +2,12 @@
  * SVG board rendering: terrain, objectives, operatives, shadows and the move overlay.
  */
 import { state } from '../state.js';
-import { BASE_R, CTRL, OBJ_R, TEAMCOL, TEAMGREY, TEAMNAME } from '../config.js';
+import { BASE_R, CTRL, ENGAGE_COL, OBJ_R, TEAMCOL, TEAMGREY, TEAMNAME } from '../config.js';
 import { VOLKUS_PIECES } from '../data/volkus-pieces.js';
 import { isInjured } from '../engine/dice.js';
 import { blobPoints, dist, perimeterPts, px, wallSegments } from '../engine/geometry.js';
 import { chopIncrements, climbDown, climbUp } from '../engine/movement.js';
+import { engagements } from '../engine/engage.js';
 import { SHOT_KINDS, shotsFrom } from '../engine/shots.js';
 import { lineBlocked, visibilityPolygon } from '../engine/sight.js';
 import { BH, BW, DECOR, DROPZONES, MAP, OBJECTIVES, OPS, OVERHEAD, TERRAIN } from '../engine/world.js';
@@ -206,6 +207,12 @@ function star4(cx, cy, ro, ri) { // four-pointed spiked star (official engage ic
   }
   return pts.join(" ");
 }
+// the red ring round a model in (or about to be in) engagement range
+function engageRing(parent, x, y) {
+  el("circle", {cx:px(x), cy:px(y), r:px(BASE_R)+12, fill:"none", stroke:ENGAGE_COL, "stroke-width":7, opacity:.25, "pointer-events":"none"}, parent);
+  el("circle", {cx:px(x), cy:px(y), r:px(BASE_R)+12, fill:"none", stroke:ENGAGE_COL, "stroke-width":2.5,
+    class:"engpulse", "data-engaged":"1", "pointer-events":"none"}, parent);
+}
 function renderOps() {
   gOps.innerHTML = "";
   // markers placed from the Ops panel (grenades, mission tokens), under the operatives
@@ -217,6 +224,12 @@ function renderOps() {
     el("image", {href:t.img, x:px(m.x) - r, y:px(m.y) - r, width:2 * r, height:2 * r,
       "clip-path":"circle(50%)", "pointer-events":"none"}, gOps).appendChild(
       document.createElementNS(NS, "title")).textContent = t.name;
+  }
+  // engaged pairs: a red ring round both models and a line between them
+  for (const [a, b] of engagements()) {
+    el("line", {x1:px(a.x), y1:px(a.y), x2:px(b.x), y2:px(b.y), stroke:ENGAGE_COL, "stroke-width":2.5,
+      "stroke-dasharray":"5 3", opacity:.8, "pointer-events":"none"}, gOps);
+    for (const o of [a, b]) engageRing(gOps, o.x, o.y);
   }
   for (const op of OPS) {
     if (!op.alive) continue;
@@ -313,7 +326,8 @@ export function dragLabelText() {
     : `${moveLabel(d.p1.type)} ${fmtIn(d.total)}" / ${fmtIn(d.primAllow)}"`;
   if (d.partial) txt += " (closest reachable)";
   else if (d.clamped && d.total >= d.primAllow + d.secAllow - 1e-9) txt += " (max)";
-  if (!d.valid) txt += " — occupied";
+  if (!d.valid) txt += ` — ${d.why || "occupied"}`;
+  else if (d.foes && d.foes.length) txt += ` → ${d.foes.map(f => f.name).join(", ")}`;
   return txt;
 }
 export function renderOverlay(cursor) {
@@ -337,7 +351,7 @@ export function renderOverlay(cursor) {
   // drag movement path (auto-routed around terrain, clamped at the combined allowance)
   if (state.drag && state.drag.active && state.drag.goal) {
     if (state.drag.path) {
-      const colorOf = t => t === "dash" ? "#8d5fa8" : "#2a4f9e"; // secondary move violet, main move/charge blue
+      const colorOf = t => t === "dash" ? "#8d5fa8" : t === "charge" ? ENGAGE_COL : "#2a4f9e"; // secondary violet, charge red, main move blue
       const chained = state.drag.total > state.drag.primAllow + 1e-9 && state.drag.p2;
       // the route as its actual movement increments: straight steps, turns between steps
       const steps = chopIncrements(state.drag.path);
@@ -371,6 +385,15 @@ export function renderOverlay(cursor) {
       const col = !state.drag.valid ? "#cf4f37" : chained ? colorOf(state.drag.p2.type) : colorOf(state.drag.p1.type);
       el("circle", {cx:px(state.drag.goal[0]), cy:px(state.drag.goal[1]), r:px(BASE_R), fill:TEAMCOL[state.drag.op.team],
         "fill-opacity":0.35, stroke:col, "stroke-width":1.5, "stroke-dasharray":"3 3"}, gOverlay);
+      // the ghost's engagement range: lights up red, with a ring on every enemy inside it
+      const foes = state.drag.foes || [], hot = foes.length > 0;
+      el("circle", {cx:px(state.drag.goal[0]), cy:px(state.drag.goal[1]), r:px(BASE_R + CTRL), fill: hot ? ENGAGE_COL : "none",
+        "fill-opacity":0.12, stroke: hot ? ENGAGE_COL : "#f5e9d8", "stroke-width": hot ? 2 : 1.2,
+        "stroke-dasharray": hot ? "none" : "4 3", opacity: hot ? 0.95 : 0.8}, gOverlay);
+      if (hot) {
+        engageRing(gOverlay, state.drag.goal[0], state.drag.goal[1]);
+        for (const f of foes) engageRing(gOverlay, f.x, f.y);
+      }
       const lbl = el("text", {x:px(state.drag.goal[0])+16, y:px(state.drag.goal[1])-12, fill:col,
         "font-family":"'JetBrains Mono',monospace", "font-size":13, "font-weight":600}, gOverlay);
       lbl.textContent = dragLabelText();

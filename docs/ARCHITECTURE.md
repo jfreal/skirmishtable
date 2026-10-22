@@ -189,6 +189,21 @@ panel lists them, valid targets first.
 `visibilityPolygon(x, y)` casts 720 rays to the first wall or heavy cell (or the board edge) for
 the shadow overlay.
 
+## Engagement range and charges (`engine/engage.js`)
+
+Two enemy operatives are engaged when their bases are within control range (Kill Team 1″,
+edge to edge). In rulesets with a charge move, a Reposition or Dash can't end there: dragging
+into an enemy's engagement range turns the drag into a Charge (Move + 2″, 1AP) when the
+operative hasn't moved yet this activation, and the landing is refused otherwise. A Charge
+must end engaged, and an operative on Conceal flips to Engage when it charges. While dragging,
+the ghost shows its engagement ring, which turns red along with a ring on every enemy inside
+it; engaged pairs keep a red ring round both models and a line between them (2D and 3D).
+
+**Demo set-up.** For now `loadMap` calls `scatterRoster()`: four of each side's six operatives
+start at random free spots off their drop zone, three of them within 1″ of terrain, none within
+2″ of an enemy. `?deploy=zones` in the address keeps everyone in the drop zones. `buildWorld`
+itself still deploys into the drop zones, so the headless tests are unaffected.
+
 ## Volkus data and TTS conventions
 
 These were all verified against the official map cards (`tools/verify_maps.py`):
