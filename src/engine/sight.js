@@ -33,7 +33,8 @@ export function lineBlocked(x1, y1, x2, y2) {
 // neither obscured nor in cover. Further away: obscured when a cover line crosses
 // sight-blocking terrain far from both operatives (Kill Team: more than 1" from the
 // attacker's base and more than 2" from the target's); in cover when a cover line crosses
-// terrain close to the target (Kill Team: within 1"). The target must be visible before
+// terrain close to the target (Kill Team: within 1"). Other operatives never give cover,
+// block sight or obscure. The target must be visible before
 // any cover line is drawn, and the lines start from a base point that can see it: of
 // those, the attacker picks the one that suits it best: not obscured first, then not in
 // cover, then in light rather than heavy cover. Distances come from the ruleset. Judged
