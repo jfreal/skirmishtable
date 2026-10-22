@@ -4,7 +4,7 @@
 import { state } from '../state.js';
 import { px } from '../engine/geometry.js';
 import { FEATS } from '../engine/grid.js';
-import { BH, BW, MAP, MAPS, OPS, TERRAIN, buildWorld } from '../engine/world.js';
+import { BH, BW, MAP, MAPS, OPS, TERRAIN, buildWorld, scatterRoster } from '../engine/world.js';
 import { convertGallowdark, convertVolkusBag, findVolkusBags, parseBSON } from '../import/tts.js';
 import { buildStatic, renderAll, renderTray } from './board.js';
 import { HINT0, hint, logEl, logLine, svg } from './dom.js';
@@ -17,8 +17,13 @@ import { mayPlay, maySetUp, pump, requestUndo } from '../net/sync.js';
 const setupOnly = () => { if (maySetUp()) return false; hint("Online, only the host changes the map, rules or resets."); return true; };
 const playOnly = () => { if (mayPlay()) return false; hint("You're watching — only the two players can do that."); return true; };
 
+// Demo set-up (for now): most operatives start scattered over the board, mostly near
+// cover, instead of in their drop zones. ?deploy=zones in the address turns it off.
+const demoScatter = typeof location === "undefined" || !/[?&]deploy=zones\b/.test(location.search);
+
 export function loadMap(keyOrMap) {
   buildWorld(typeof keyOrMap === "string" ? MAPS[keyOrMap] : keyOrMap);
+  if (demoScatter) scatterRoster();
   svg.setAttribute("viewBox", `0 0 ${px(BW)} ${px(BH)}`);
   state.sel = null; state.target = null; state.lastShot = null; state.drag = null;
   undoStack.length = 0;

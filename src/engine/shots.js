@@ -4,7 +4,8 @@
  * Concealed in cover, in melee with a friendly, not visible). The 2D map, the 3D table and
  * the side panel all read this while an operative is selected or being dragged.
  */
-import { CTRL, WPN } from '../config.js';
+import { WPN } from '../config.js';
+import { foesNear } from './engage.js';
 import { opGap } from './geometry.js';
 import { G } from './grid.js';
 import { canSee, sightAnalysis } from './sight.js';
@@ -54,9 +55,10 @@ export function judgeShot(eye, target) {
   const up = standing(eye), down = standing(target);
   const vantage = !!(RULES.vantage && inCover && up.vantage && !s.hardCover && up.z - down.z >= RULES.vantage.rise - 1e-9);
   const concealed = !!(RULES.orders && target.order === "conceal" && inCover);
-  // the friend in melee with the target (never the shooter: it is at the eye point)
+  // the friend in melee with the target: one of the shooter's side within the target's
+  // engagement range (never the shooter itself: it is at the eye point)
   const engagedBy = eye.team === undefined ? null
-    : others.find(o => o.team === eye.team && opGap(o, target) <= CTRL + 1e-9) || null;
+    : foesNear(target.x, target.y, target.team, eye.op ? eye.op.id : null).find(o => o.team === eye.team && o !== shooter) || null;
   let kind;
   if (!s.visible) kind = "hidden";
   else if (s.obscBy) kind = "obscured";

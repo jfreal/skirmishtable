@@ -37,7 +37,7 @@ let errors;
 test.beforeEach(async ({ page }) => {
   errors = [];
   page.on('pageerror', e => errors.push(e.message));
-  await page.goto('/');
+  await page.goto('/?deploy=zones');   // drop-zone deployment: the tests expect open table, not the random demo scatter
   await page.waitForFunction(() => window.skirmishtable && skirmishtable.world.MAP);
 });
 test.afterEach(() => expect(errors).toEqual([]));
@@ -98,6 +98,43 @@ test('judges a nooked target as in cover', async ({ page }) => {
   await page.mouse.click(p.x, p.y);
   await expect(page.locator('#verdict')).toContainText('NOT A VALID TARGET');
   await expect(page.locator('#verdict')).toContainText('in cover behind Stronghold 1');
+});
+
+// two operatives alone on open ground on Volkus AO 1, everyone else out of the way
+async function duel(page) {
+  await kz(page, () => {
+    for (const o of skirmishtable.world.OPS) o.alive = o.id === 'A5' || o.id === 'B1';
+    const ops = skirmishtable.world.OPS, a = ops.find(o => o.id === 'A5'), b = ops.find(o => o.id === 'B1');
+    a.x = 19; a.y = 12.5; b.x = 25; b.y = 12.5; skirmishtable.renderAll();
+  });
+}
+const opAt = (page, id) => kz(page, id => { const o = skirmishtable.world.OPS.find(o => o.id === id); return [+o.x.toFixed(2), +o.y.toFixed(2)]; }, id);
+
+test('dragging into engagement range turns the move into a charge and rings both models', async ({ page }) => {
+  await to2D(page);
+  await duel(page);
+  const a = await toScreen(page, 19, 12.5), b = await toScreen(page, 23.6, 12.5);
+  await page.mouse.move(a.x, a.y); await page.mouse.down();
+  for (let i = 1; i <= 10; i++) await page.mouse.move(a.x + (b.x - a.x) * i / 10, a.y + (b.y - a.y) * i / 10);
+  const during = await kz(page, () => { const d = skirmishtable.state.drag; return [d.p1.type, d.valid, d.foes.map(f => f.id)]; });
+  expect(during).toEqual(['charge', true, ['B1']]);
+  expect(await page.locator('#board [data-engaged]').count()).toBeGreaterThanOrEqual(2);   // the ghost and B1 light up
+  await page.mouse.up();
+  expect(await opAt(page, 'A5')).toEqual([23.6, 12.5]);
+  expect(await kz(page, () => { const o = skirmishtable.world.OPS.find(o => o.id === 'A5'); return [o.order, o.used]; })).toEqual(['engage', ['charge']]);
+  await expect(page.locator('#log p', { hasText: 'Brand charges' })).toHaveCount(1);
+  await expect(page.locator('#log p', { hasText: 'flips to ▲ Engage' })).toHaveCount(1);
+  expect(await page.locator('#board [data-engaged]').count()).toBe(2);   // engaged: a red ring round both
+});
+
+test('a move after another move cannot end within engagement range', async ({ page }) => {
+  await to2D(page);
+  await duel(page);
+  await drag(page, [19, 12.5], [21, 12.5]);                    // Reposition 2"
+  expect(await opAt(page, 'A5')).toEqual([21, 12.5]);
+  await drag(page, [21, 12.5], [23.6, 12.5]);                  // Dash into range: no Charge after moving
+  expect(await opAt(page, 'A5')).toEqual([21, 12.5]);
+  await expect(page.locator('#hint')).toContainText("can't Charge after moving");
 });
 
 test('switches maps from the picker and undoes a move', async ({ page }) => {
