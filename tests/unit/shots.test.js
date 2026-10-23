@@ -1,5 +1,7 @@
-// Valid shots: base-to-base cover lines, heavy vs light terrain, the cover distance and the
-// Conceal order, judged on small hand-made boards under all three rulesets.
+// Valid shots: base-to-base cover lines, heavy vs light terrain, the cover and obscuring
+// distances, the Conceal order and Vantage Points, friends in melee with the target, and
+// when the shooter can't Shoot at all, judged on small hand-made boards under all three
+// rulesets.
 import { describe, it, expect, afterAll } from 'vitest';
 import * as world from '../../src/engine/world.js';
 import * as sight from '../../src/engine/sight.js';
@@ -7,6 +9,7 @@ import * as shots from '../../src/engine/shots.js';
 import * as rules from '../../src/rules/index.js';
 import * as config from '../../src/config.js';
 import { perimeterPts } from '../../src/engine/geometry.js';
+import { rollDefence } from '../../src/engine/dice.js';
 
 afterAll(() => rules.setRuleset('killteam'));
 // a bare 24" x 12" board with just the given terrain rects
@@ -18,6 +21,12 @@ const board = (...terrain) => world.buildWorld({
 const use = id => rules.setRuleset(id);
 const op = (x, y, order = 'engage') => ({x, y, order});
 const kind = (a, b) => shots.judgeShot(a, b).kind;
+// put exactly these operatives on the board: [id, team, x, y, order?]
+const ops = (...list) => world.OPS.splice(0, world.OPS.length,
+  ...list.map(([id, team, x, y, order = 'engage']) => ({id, name: id, team, x, y, order, alive: true})));
+const opById = id => world.OPS.find(o => o.id === id);
+// the shot from A1 (team 0) at another operative, A1 being the eye
+const shotAt = (id, extra = {}) => { const a = opById('A1'); return shots.judgeShot({x: a.x, y: a.y, team: 0, op: a, ...extra}, opById(id)); };
 
 // Attacker on the left, target 9" to its right, on the same row.
 const A = op(3, 6), B = op(12, 6);
@@ -102,6 +111,175 @@ describe('Kill Team (2024) shots', () => {
   });
 });
 
+describe('Kill Team (2024): obscured more than 1" from the shooter and 2" from the target', () => {
+  // the same heavy piece across the lower half of the lines, moved towards the target
+  const piece = x => ({kind: 'heavy', x, y: 5.9, w: 0.3, h: 3.1});
+
+  it('heavy terrain over 2" from the target obscures, and an obscured target is still valid', () => {
+    use('killteam'); board(piece(8.9));                    // about 2.3" from the target's base
+    const j = shots.judgeShot(A, B);
+    expect(j.kind).toBe('obscured');
+    expect(shots.SHOT_KINDS[j.kind].valid).toBe(true);
+    expect([j.obscured, j.save]).toEqual([true, false]);
+  });
+
+  it('between 1" and 2" from the target it neither obscures nor gives cover', () => {
+    use('killteam'); board(piece(9.7));                    // about 1.5" from the target's base
+    const s = sight.sightAnalysis(A, B);
+    expect(s.obscBy).toBeNull();
+    expect(s.coverBy).toBeNull();
+    expect(kind(A, B)).toBe('clear');
+  });
+
+  it('an obscured target out of cover is a valid one on Conceal too', () => {
+    use('killteam'); board(heavyPart);
+    expect(kind(A, op(12, 6, 'conceal'))).toBe('obscured');
+  });
+
+  it('a target can be obscured and in cover at once', () => {
+    use('killteam'); board(heavyPart, lightNear);
+    const j = shots.judgeShot(A, B);
+    expect([j.kind, j.obscured, j.inCover, j.save]).toEqual(['obscured', true, true, true]);
+    expect(j.sight.coverBy.kind).toBe('light');
+    // on Conceal the cover decides: not a valid target, and the line shows the cover
+    const c = shots.judgeShot(A, op(12, 6, 'conceal'));
+    expect([c.kind, c.obscured]).toEqual(['concealed', true]);
+    expect(c.line).toEqual(c.sight.coverBy.line);
+  });
+
+  it('within 2" nothing obscures and nothing gives cover', () => {
+    // With Kill Team's numbers obscuring can't happen inside 2" anyway (1" + 2" > 2"), so
+    // tighten them for this check: the same heavy strip obscures from 2.5" but not 1.9".
+    use('killteam'); board({kind: 'heavy', x: 10.4, y: 5.9, w: 0.2, h: 3.1});
+    const keep = rules.RULES.obscure;
+    try {
+      rules.RULES.obscure = {fromShooter: 0, fromTarget: 0};
+      expect(kind(op(8.4, 6), B)).toBe('obscured');        // 2.5" base to base
+      expect(kind(op(9, 6), B)).toBe('clear');             // 1.9": no obscuring, and no cover
+    } finally { rules.RULES.obscure = keep; }
+  });
+
+  it('the ruleset holds the two distances', () => {
+    expect(rules.RULESETS.killteam.obscure).toEqual({fromShooter: 1, fromTarget: 2});
+  });
+});
+
+describe('Kill Team (2024): other operatives give no cover', () => {
+  it('the base of another operative right in front of the target gives no cover', () => {
+    use('killteam'); board();
+    ops(['A1', 0, 3, 6], ['B1', 1, 12, 6], ['B2', 1, 10.6, 6]);
+    const j = shotAt('B1');
+    expect(j.kind).toBe('clear');
+    expect(j.inCover).toBe(false);
+    expect(j.sight.coverBy).toBeNull();
+    expect(j.sight.obscBy).toBeNull();
+  });
+
+  it('a friendly base in front of the target gives no cover either', () => {
+    use('killteam'); board();
+    ops(['A1', 0, 3, 6], ['B1', 1, 12, 6], ['A2', 0, 9, 6]);
+    expect(shotAt('B1').kind).toBe('clear');
+  });
+
+  it('a Concealed target behind another operative is still a valid target', () => {
+    use('killteam'); board();
+    ops(['A1', 0, 3, 6], ['B1', 1, 12, 6, 'conceal'], ['B2', 1, 10.6, 6]);
+    expect(shotAt('B1').kind).toBe('clear');
+  });
+});
+
+describe('Kill Team (2024): Conceal and Vantage Points', () => {
+  it('Conceal in light or heavy cover is not a valid target', () => {
+    use('killteam'); board(lightNear);
+    const j = shots.judgeShot(A, op(12, 6, 'conceal'));
+    expect(j.kind).toBe('concealed');
+    expect(j.vantage).toBe(false);
+    board(heavyNear);
+    expect(kind(A, op(12, 6, 'conceal'))).toBe('concealed');
+  });
+
+  it('on Engage in cover it is valid and keeps a normal cover save', () => {
+    use('killteam'); board(lightNear);
+    const j = shots.judgeShot(A, B);
+    expect([j.kind, j.save, j.accurate]).toEqual(['cover', true, 0]);
+  });
+
+  it('from a Vantage Point, Conceal in light cover is valid and keeps its cover save', () => {
+    use('killteam'); board(lightNear);
+    const j = shots.judgeShot({...A, z: 3, vantage: true}, op(12, 6, 'conceal'));
+    expect([j.kind, j.save, j.vantage]).toEqual(['cover', true, true]);
+    expect(kind({...A, z: 3}, op(12, 6, 'conceal'))).toBe('concealed');            // not a Vantage Point
+    board(heavyNear);
+    expect(kind({...A, z: 3, vantage: true}, op(12, 6, 'conceal'))).toBe('concealed');   // heavy cover
+  });
+
+  it('from a Vantage Point, an Engage target in cover gives Accurate 1 from 2" lower, 2 from 4"', () => {
+    use('killteam'); board(lightNear);
+    const acc = z => shots.judgeShot({...A, z, vantage: true}, B).accurate;
+    expect([acc(1.5), acc(2), acc(3.9), acc(4)]).toEqual([0, 1, 1, 2]);
+    expect(shots.judgeShot({...A, z: 4, vantage: true}, B).save).toBe(true);
+  });
+
+  it('the cover save is kept unrolled as one normal success', () => {
+    for (let n = 0; n < 20; n++) {
+      const plain = rollDefence(7, false), cover = rollDefence(7, true);
+      expect([plain.dice.length, cover.dice.length]).toEqual([3, 2]);
+      expect(cover.norm).toBe(1);        // a 7+ save never succeeds by itself
+    }
+  });
+
+  it('operatives stand on the table until the engine knows heights', () => {
+    expect(shots.standing({x: 1, y: 1})).toEqual({z: 0, vantage: false});
+  });
+});
+
+describe('Kill Team (2024): a friend in melee with the target', () => {
+  it('an enemy with one of the shooter\'s friends in its control range is not a valid target', () => {
+    use('killteam'); board();
+    ops(['A1', 0, 3, 6], ['B1', 1, 12, 6], ['A2', 0, 12, 7.6]);    // 0.5" base to base
+    const j = shotAt('B1');
+    expect(j.kind).toBe('engaged');
+    expect(j.engagedBy.id).toBe('A2');
+    expect(shots.SHOT_KINDS.engaged.valid).toBe(false);
+  });
+
+  it('a friend outside control range, or another enemy close by, changes nothing', () => {
+    use('killteam'); board();
+    ops(['A1', 0, 3, 6], ['B1', 1, 12, 6], ['A2', 0, 12, 8.4], ['B2', 1, 13.5, 6]);
+    expect(shotAt('B1').kind).toBe('clear');
+  });
+
+  it('is judged before visibility and cover', () => {
+    use('killteam'); board(heavyWall);
+    ops(['A1', 0, 3, 6], ['B1', 1, 12, 6, 'conceal'], ['A2', 0, 12, 7.6]);
+    const j = shotAt('B1');
+    expect(j.kind).toBe('engaged');
+    expect(j.sight.visible).toBe(false);
+    expect(j.line).toBeNull();
+  });
+});
+
+describe('when the shooter can\'t Shoot at all', () => {
+  it('on Conceal, or with an enemy in its control range', () => {
+    use('killteam'); board();
+    ops(['A1', 0, 3, 6, 'conceal'], ['B1', 1, 12, 6], ['B2', 1, 3, 7.5]);
+    const eye = () => { const a = opById('A1'); return {x: a.x, y: a.y, team: 0, op: a}; };
+    expect(shots.cannotShoot(eye())).toEqual({why: 'conceal'});
+    opById('A1').order = 'engage';
+    const no = shots.cannotShoot(eye());
+    expect(no.why).toBe('engaged');
+    expect(no.by.id).toBe('B2');
+    opById('B2').y = 9;
+    expect(shots.cannotShoot(eye())).toBeNull();
+  });
+
+  it('rulesets without orders only check melee', () => {
+    use('ashfall'); board();
+    ops(['A1', 0, 3, 6, 'conceal'], ['B1', 1, 12, 6]);
+    expect(shots.cannotShoot({x: 3, y: 6, team: 0, op: opById('A1')})).toBeNull();
+  });
+});
+
 describe('the target must be visible before any line is drawn', () => {
   const seesFrom = ([ax, ay], o) => perimeterPts(o, 24, config.BASE_R - 0.02).some(([bx, by]) => !sight.lineBlocked(ax, ay, bx, by));
 
@@ -134,10 +312,26 @@ describe('the other rulesets', () => {
     expect(kind(A, B)).toBe('clear');
   });
 
+  it('Infinity-style: other bases give no cover, and melee means base contact', () => {
+    use('infinity'); board();
+    ops(['A1', 0, 3, 6], ['B1', 1, 12, 6], ['B2', 1, 10.8, 6]);
+    expect(shotAt('B1').kind).toBe('clear');
+    ops(['A1', 0, 3, 6], ['B1', 1, 12, 6], ['A2', 0, 12, 7.6]);
+    expect(shotAt('B1').kind).toBe('clear');
+    ops(['A1', 0, 3, 6], ['B1', 1, 12, 6], ['A2', 0, 12, 7]);
+    expect(shotAt('B1').kind).toBe('engaged');
+  });
+
   it('Ashfall: cover within 2", obscured beyond 3", no orders', () => {
     use('ashfall'); board({kind: 'light', x: 9.5, y: 5, w: 0.3, h: 2});
     expect(kind(A, op(12, 6, 'conceal'))).toBe('cover');
     board(heavyPart);
+    expect(kind(A, B)).toBe('obscured');
+    // ~2.5" from the target: obscured under Kill Team, neither obscured nor cover here
+    const mid = {kind: 'heavy', x: 8.6, y: 5.9, w: 0.3, h: 3.1};
+    board(mid);
+    expect(kind(A, B)).toBe('clear');
+    use('killteam'); board(mid);
     expect(kind(A, B)).toBe('obscured');
   });
 });
@@ -157,5 +351,8 @@ describe('shotsFrom', () => {
     expect(shots.shotsFrom({...eye})).toBe(list);
     world.OPS[1].order = 'engage';
     expect(shots.shotsFrom(eye).map(s => s.kind)).toEqual(['cover', 'clear']);
+    // a friend stepping into the target's control range is a change too
+    world.OPS[4].x = 12; world.OPS[4].y = 7.6;
+    expect(shots.shotsFrom(eye).map(s => s.kind)).toEqual(['engaged', 'clear']);
   });
 });

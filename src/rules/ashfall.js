@@ -19,6 +19,7 @@ export default {
   climbUp: () => 3,
   climbDown: () => 1,
   cover: { range: 2, voidWithin: 3 },
-  obscure: { beyond: 3 },
+  obscure: { fromShooter: 3, fromTarget: 3 },
+  vantage: null,
   orders: false,
 };

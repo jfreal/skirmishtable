@@ -33,8 +33,9 @@ A ruleset is a plain object (see `killteam.js`):
 | `increment` | `legCost(L)`: `ceil(L / inc) · inc`, or `L` when 0. Route costs, clamping, the whole-inch optimiser, `straightenIncrements` and `chopIncrements` all go through it |
 | `moves.primary / secondary / charge` | labels, verbs, `allow(op)` and `climb`. Game state keeps fixed ids (`reposition`, `dash`, `charge`); the planner builds both move orders and derives the climbing window from which phases may climb |
 | `climbUp(h)`, `climbDown(h)` | portal and climb-leg costs |
-| `cover {range, voidWithin}`, `obscure {beyond}` or `null` | `sightAnalysis` |
+| `cover {range, voidWithin}`, `obscure {fromShooter, fromTarget}` or `null` | `sightAnalysis` |
 | `orders` | Conceal/Engage tokens and the "concealed in cover" verdict |
+| `vantage {accurate: [h1, h2]}` or `null` | `judgeShot`: a Vantage Point shooter sees past light cover on a Conceal target, and gets Accurate 1 / 2 against an Engage target in cover at least `h1` / `h2` below |
 
 Switching rules reloads the map, because the clearance threshold, climb portals and cached
 route fields depend on the base size and costs.
@@ -165,36 +166,70 @@ Theta* routes hug rounded corners in several short legs, and each one costs a fu
 ## Sight (`engine/sight.js`)
 
 `sightAnalysis(a, b)` works like this (Kill Team 2024 cover lines: any one point of the
-attacker's base to every part of the target's base, drawn straight through terrain):
+attacker's base to every part of the target's base, drawn straight through terrain). The app
+is top-down, so "visible" stays a base-to-base check rather than one from the shooter's head
+to the target's model.
 
 1. **Visible:** some line from one of 16 points on the attacker's base to one of 24 points on
    the target's base crosses no wall or heavy cell. Both bases are taken 0.02" inside their
    edge. Each of these checks stops at the first wall, so proving a target hidden is cheap.
-   Not visible ends the analysis.
-2. Cover lines start only from a base point that can see the target (at least one clear
-   line). Of those, the attacker picks the one that suits it best: **not obscured** first, then
-   **not in cover**. From each point every cover line (blocked ones included) is walked through every
-   cell:
-   - **Cover:** a crossed wall, heavy or light cell within 1" (control range) of the target's
-     base edge, when the operatives are more than 2" apart.
-   - **Obscured:** a crossed wall or heavy cell more than 1" from both bases. Light never
-     obscures.
+   Not visible ends the analysis. `canSee(a, b)` is this step on its own.
+2. Within `cover.voidWithin` of the attacker (Kill Team: 2") the target is neither obscured nor
+   in cover, and the analysis just reports a clear line.
+3. Otherwise cover lines start only from a base point that can see the target (at least one
+   clear line). Of those, the attacker picks the one that suits it best: **not obscured** first,
+   then **not in cover**, then in light rather than heavy cover (that matters for Vantage, below).
+   From each point every cover line (blocked ones included) is walked through every cell:
+   - **Obscured:** a crossed wall or heavy cell more than `obscure.fromShooter` from the
+     attacker's base edge *and* more than `obscure.fromTarget` from the target's (Kill Team:
+     1" and 2"). Light never obscures. Infinity has no obscuring (`obscure: null`).
+   - **Cover:** a crossed wall, heavy or light cell within `cover.range` of the target's base
+     edge (Kill Team: 1"). `hardCover` says whether any of it is a wall or heavy terrain.
+   Other operatives' bases don't count for any of this.
 
    Points stop early once they can't beat the best so far, and the search stops at the first
    point with neither.
-3. The chosen point is walked once more to report, per judgement, the crossed cells' bounding
+4. The chosen point is walked once more to report, per judgement, the crossed cells' bounding
    box for the feature closest to the target (what the UI highlights; its `id` names the piece),
    the crossing point `at`, and the cover `line` that decides it.
 
 ## Valid shots (`engine/shots.js`)
 
-`judgeShot(eye, target)` turns `sightAnalysis` into one of five calls: `clear`, `cover`,
-`obscured`, `concealed` (Kill Team: Conceal order and in cover, so not a valid target) or
-`hidden` (not visible), plus the deciding line (none for `hidden`: nothing to draw one to). `shotsFrom(eye)` judges every live enemy and
-reuses the answer until the eye, an enemy, the map or the rules change. While an operative is
+First the shooter: `cannotShoot(eye)` says why the operative can't take a Shoot action at all,
+or null: it is on Conceal (rulesets with `orders`), or an enemy is within its control range
+(`foesNear`). The valid-shots panel and the verdict say so, and Shoot is disabled.
+
+Then each target. `judgeShot(eye, target)` follows the Kill Team 2024 "valid target?" steps in
+order and returns one of six calls, plus the deciding line (none when the target isn't visible):
+
+1. `engaged`: an operative friendly to the shooter (same `team`, not the shooter itself) is within
+   the target's engagement range (`foesNear` in `engage.js`). In melee, so not a valid target.
+2. `hidden`: not visible, not a valid target.
+3. Within 2": `clear` (see Sight step 2).
+4. Further away a target can be obscured, in cover, or both (`obscured`, `inCover`):
+   - in cover on Conceal: `concealed`, not a valid target, unless the cover is only light
+     terrain and the shooter stands on a Vantage Point (`vantage: true`). Heavy cover always
+     protects a Concealed target.
+   - anything else is valid. The call is `obscured` if obscured, else `cover` if in cover,
+     else `clear`. When an obscured target is shot, the attacker's crits count as normal
+     successes and one success is discarded. In cover, the target keeps one defence die as a
+     normal success without rolling it (`save`). On Engage in cover, a Vantage Point gives
+     the shot Accurate 1 if the target is at least `vantage.accurate[0]` (2") lower, or
+     Accurate 2 at `vantage.accurate[1]` (4") (`accurate`).
+
+   Heights and Vantage Points come from `standing(p)`. TODO: the engine has no model heights or
+   terrain traits yet, so this only reads `z` / `vantage` set on the eye or target and is
+   0 / false otherwise.
+
+The result also carries `obscured`, `inCover`, `save`, `accurate`, `vantage`, `engagedBy` and `range`.
+`shotsFrom(eye)` judges every live enemy (never a friendly) and
+reuses the answer until the eye, any operative, the map or the rules change. While an operative is
 selected or dragged (`board.shotEye()`: the landing spot during a drag), the 2D map and the 3D
-table mark every enemy in the colour of its call with the deciding line, and the Valid shots
-panel lists them, valid targets first.
+table mark every enemy in the colour of its call (`SHOT_COL`) with the deciding line, and the Valid shots
+panel lists them, valid targets first. The chosen target's judgement is `state.lastShot`
+(`panels.refreshSight()`, again on every `renderAll`). The verdict panel explains it. `doShoot`
+checks `cannotShoot` and judges again. It refuses an invalid target, applies Accurate and the
+obscured penalty, and rolls the cover save when `save`.
 
 `visibilityPolygon(x, y)` casts 720 rays to the first wall or heavy cell (or the board edge) for
 the shadow overlay.

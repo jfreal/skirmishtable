@@ -20,5 +20,6 @@ export default {
   climbDown: () => 0,
   cover: { range: 0.5, voidWithin: 0 },
   obscure: null,
+  vantage: null,
   orders: false,
 };

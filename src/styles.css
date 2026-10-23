@@ -96,9 +96,9 @@ button.restricted { opacity: .5; }
 #shots .shotlist { list-style: none; margin: 0; padding: 0; max-height: 200px; overflow-y: auto; }
 #shots li { margin: 0 0 3px; line-height: 1.35; }
 #shots li i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; vertical-align: 0; }
-#shots li[data-shot=concealed] i, #shots li[data-shot=hidden] i { background: none !important; border: 1.5px dashed #9a9184; width: 6px; height: 6px; }
+#shots li[data-shot=concealed] i, #shots li[data-shot=engaged] i, #shots li[data-shot=hidden] i { background: none !important; border: 1.5px dashed #9a9184; width: 6px; height: 6px; }
 #shots .k-clear { color: #6faf82; } #shots .k-cover { color: #d3a04a; } #shots .k-obscured { color: #c9a1e0; }
-#shots .k-concealed { color: #b8a27a; } #shots .k-hidden { color: #9a9184; }
+#shots .k-concealed { color: #b8a27a; } #shots .k-engaged { color: #d97a62; } #shots .k-hidden { color: #9a9184; }
 #shots .why { color: #8a8174; }
 
 #log { max-height: 220px; overflow-y: auto; font-size: 12px; }

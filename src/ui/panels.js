@@ -5,8 +5,7 @@ import { state } from '../state.js';
 import { CTRL, TEAMCOL_LT, WPN } from '../config.js';
 import { effHit, isInjured, rollAttack, rollDefence } from '../engine/dice.js';
 import { opGap } from '../engine/geometry.js';
-import { SHOT_KINDS, shotsFrom } from '../engine/shots.js';
-import { sightAnalysis } from '../engine/sight.js';
+import { SHOT_KINDS, cannotShoot, judgeShot, shotsFrom } from '../engine/shots.js';
 import { OPS } from '../engine/world.js';
 import { SHOT_COL, renderAll } from './board.js';
 import { HINT0, fmtDice, hint, logLine } from './dom.js';
@@ -28,28 +27,37 @@ export function doUndo() {
   const o = JSON.parse(s); OPS.splice(0, OPS.length, ...o.ops); Object.assign(tray, o.tray);
   if (o.extras) undoExtras.forEach((x, i) => { if (o.extras[i] !== undefined) x.set(o.extras[i]); });
   if (state.sel) state.sel = OPS.find(x => x.id === state.sel.id) || null;
-  state.target = null; state.lastSight = null; cancelMode();
+  state.target = null; state.lastShot = null; cancelMode();
   logLine("Undid last action.");
   renderAll();
 }
 
 /* ---------- combat ---------- */
 function doShoot() {
-  if (!state.sel || !state.target || !state.lastSight) return;
+  if (!state.sel || !state.target) return;
   const w = WPN[state.sel.weapon];
   if (w.type !== "R") { logLine("Selected weapon is melee — use Fight."); return; }
+  const no = cannotShoot(selEye());
+  if (no) { logLine(`<b>${state.sel.name}</b> can't Shoot — ${noShootWhy(no)}.`); return; }
+  refreshSight();                        // judge it as things stand now, not when targeted
+  const shot = state.lastShot;
+  if (!shot || !SHOT_KINDS[shot.kind].valid) {
+    logLine(`<b>${state.target.name}</b> is not a valid target — ${shot ? shotWhy(shot) : "no target"}.`);
+    renderAll(); return;
+  }
   snapshot();
-  const a = rollAttack(w.atk, effHit(state.sel, w), w.rules);
+  // Accurate (from a Vantage Point): that many attack dice kept as normal successes unrolled
+  const acc = Math.min(shot.accurate, w.atk);
+  const a = rollAttack(w.atk - acc, effHit(state.sel, w), w.rules);
   showRoll(a.dice, effHit(state.sel, w), state.sel.team, `${state.sel.name} shoots`);
-  let aCrit = a.crit, aNorm = a.norm, notes = [];
-  if (state.lastSight.obscBy) { // crits become normal, then discard one success
+  let aCrit = a.crit, aNorm = a.norm + acc, notes = [];
+  if (acc) notes.push(`Accurate ${acc}`);
+  if (shot.obscured) { // crits become normal, then discard one success
     aNorm += aCrit; aCrit = 0;
-    if (aNorm > 0) { aNorm--; }
+    if (aNorm > 0) aNorm--;
     notes.push("obscured: crits downgraded, one success discarded");
   }
-  // (defender would choose cover or obscured if the same feature caused both; here they can
-  //  co-exist when caused by different features, which matches the rules)
-  const dfn = rollDefence(state.target.save, !!state.lastSight.coverBy);
+  const dfn = rollDefence(state.target.save, shot.save);
   if (dfn.cover) notes.push("cover save banked");
   let dCrit = dfn.crit, dNorm = dfn.norm;
   // resolve defence: crits block crits first, then normals; two normals stop a crit
@@ -174,12 +182,12 @@ export function renderCard() {
     <div class="btnrow">${moveButtons(repoUsed, dashUsed, chargeUsed)}</div>
     <div class="btnrow">
       <button id="tgtbtn" class="${state.mode==='target'?'active':''}">Target ⌖</button>
-      <button id="shootbtn" ${(!state.target || !state.lastSight || !state.lastSight.visible || WPN[state.sel.weapon].type!=="R") ? "disabled" : ""}>Shoot 1AP</button>
+      <button id="shootbtn" ${(!state.target || !state.lastShot || !SHOT_KINDS[state.lastShot.kind].valid || cannotShoot(selEye()) || WPN[state.sel.weapon].type!=="R") ? "disabled" : ""}>Shoot 1AP</button>
       <button id="fightbtn" ${meleeFoes.length ? "" : "disabled"}>Fight 1AP</button>
     </div>`;
   if (RULES.orders) c.querySelector("#ordbtn").onclick = () => { state.sel.order = state.sel.order === "conceal" ? "engage" : "conceal"; refreshSight(); renderAll(); };
   c.querySelector("#endact").onclick = () => { snapshot(); state.sel.ready = false; state.sel.ap = state.sel.apl; state.sel.used = []; state.moveType = "reposition"; logLine(`<b>${state.sel.name}</b> activation ends.`); cancelMode(); renderAll(); };
-  c.querySelectorAll("input[name=wpn]").forEach(r => r.onchange = () => { state.sel.weapon = r.value; renderAll(); });
+  c.querySelectorAll("input[name=wpn]").forEach(r => r.onchange = () => { state.sel.weapon = r.value; refreshSight(); renderAll(); });
   c.querySelector("#wdn").onclick = () => adjustWounds(state.sel, -1);
   c.querySelector("#wup").onclick = () => adjustWounds(state.sel, +1);
   for (const t of ["reposition", "dash", "charge"]) {
@@ -201,35 +209,59 @@ export function renderCard() {
     c.querySelectorAll("button:not(#tgtbtn), input").forEach(b => { b.disabled = true; });
   c.querySelector("#fightbtn").onclick = () => {
     if (!state.target || opGap(state.sel, state.target) > CTRL) {
-      state.target = meleeFoes[0]; state.lastSight = sightAnalysis(state.sel, state.target);
+      state.target = meleeFoes[0]; refreshSight();
     }
     doFight();
   };
 }
 export function renderVerdict() {
   const v = document.getElementById("verdict");
-  if (!state.sel || !state.target || !state.lastSight || !state.target.alive) {
+  if (!state.sel || !state.target || !state.lastShot || !state.target.alive) {
     v.innerHTML = '<span class="hint">Select an operative, press Target, then click an enemy.</span>'; return;
   }
-  const s = state.lastSight;
+  const shot = state.lastShot, s = shot.sight, c = s.coverBy, o = s.obscBy;
   let big, cls, why = [];
-  if (!s.visible) { big = "NOT VISIBLE"; cls = "v-novis"; why.push("no clear sight line — blocked by terrain"); }
+  if (shot.kind === "engaged") { big = "NOT A VALID TARGET — IN MELEE"; cls = "v-novis";
+    why.push(`friendly ${shot.engagedBy.name} is within ${fmtIn(CTRL)}" of it`); }
+  else if (shot.kind === "hidden") { big = "NOT VISIBLE"; cls = "v-novis"; why.push("no clear sight line — blocked by terrain"); }
   else {
-    const concealSafe = RULES.orders && state.target.order === "conceal" && s.coverBy;
-    if (concealSafe) { big = "NOT A VALID TARGET"; cls = "v-novis"; why.push(`conceal order + in cover behind ${s.coverBy.id}`); }
-    else if (s.obscBy) { big = "VALID — OBSCURED"; cls = "v-obsc"; why.push(`heavy terrain ${s.obscBy.id} intervenes >${fmtIn(RULES.obscure.beyond)}" from both`); }
-    else if (s.coverBy) { big = "VALID — IN COVER"; cls = "v-cover"; why.push(`${s.coverBy.id} intervenes within ${fmtIn(RULES.cover.range)}" of target → cover save`); }
-    else { big = "VALID TARGET"; cls = "v-valid"; why.push("clear shot — no cover, no obscuring"); }
-    if (RULES.orders && state.target.order === "conceal" && !s.coverBy) why.push("conceal order but no cover — still targetable");
-    if (RULES.cover.voidWithin > 0 && s.gap <= RULES.cover.voidWithin) why.push(`within ${fmtIn(RULES.cover.voidWithin)}": cover is void`);
+    if (shot.kind === "obscured") { big = "VALID — OBSCURED"; cls = "v-obsc";
+      why.push(`heavy terrain ${o.id} crosses a cover line more than ${fmtIn(RULES.obscure.fromShooter)}" from the shooter and ${fmtIn(RULES.obscure.fromTarget)}" from the target → one success discarded, crits count as normal`);
+      if (c) why.push(`also in cover behind ${c.id}${shot.vantage ? " (conceal order, seen past from a Vantage Point)" : ""} → cover save`); }
+    else if (shot.kind === "concealed") { big = "NOT A VALID TARGET"; cls = "v-novis";
+      why.push(`conceal order + in cover behind ${c.id}${s.hardCover ? " (heavy)" : ""}`); }
+    else if (shot.kind === "cover") { big = "VALID — IN COVER"; cls = "v-cover";
+      why.push(shot.vantage
+        ? `conceal order, but shot down from a Vantage Point past light cover (${c.id}) → cover save`
+        : `${c.id} intervenes within ${fmtIn(RULES.cover.range)}" of target → cover save`); }
+    else { big = "VALID TARGET"; cls = "v-valid"; why.push("clear shot — no cover, not obscured"); }
+    if (shot.accurate) why.push(`from a Vantage Point: Accurate ${shot.accurate}`);
+    if (RULES.orders && state.target.order === "conceal" && !c && shot.kind === "clear") why.push("conceal order but no cover — still targetable");
+    if (RULES.cover.voidWithin > 0 && s.gap <= RULES.cover.voidWithin) why.push(`within ${fmtIn(RULES.cover.voidWithin)}": no cover, no obscuring`);
   }
   why.push(`range ${Math.max(0, s.gap).toFixed(1)}" base-to-base`);
-  v.innerHTML = `<div class="big ${cls}">${big}</div><div class="why">${state.sel.name} → ${state.target.name} · ${why.join(" · ")}</div>`;
+  const no = cannotShoot(selEye());
+  const head = no ? `<div class="why"><b>${state.sel.name} can't Shoot</b> — ${noShootWhy(no)}</div>` : "";
+  v.innerHTML = `${head}<div class="big ${cls}">${big}</div><div class="why">${state.sel.name} → ${state.target.name} · ${why.join(" · ")}</div>`;
+}
+// the selected operative as a shooter, where it stands
+const selEye = () => ({x: state.sel.x, y: state.sel.y, team: state.sel.team, op: state.sel});
+// why an operative can't take a Shoot action at all
+const noShootWhy = n => n.why === "conceal" ? "it is on Conceal" : `within control range of ${n.by.name}`;
+// one short reason per judgement, for the valid-shots list and the log
+function shotWhy(s) {
+  const c = s.sight.coverBy, o = s.sight.obscBy, acc = s.accurate ? `; Accurate ${s.accurate} from a Vantage Point` : "";
+  if (s.kind === "clear") return "no cover, not obscured";
+  if (s.kind === "cover") return s.vantage ? `on Conceal behind ${c.id}, seen past from a Vantage Point` : `${c.id} within ${fmtIn(RULES.cover.range)}″ of it${acc}`;
+  if (s.kind === "obscured") return `heavy terrain ${o.id} in the way${c ? `; also in cover (${c.id})` : ""}`;
+  if (s.kind === "concealed") return `on Conceal, in cover (${c.id})`;
+  if (s.kind === "engaged") return `in melee with ${s.engagedBy.name}`;
+  return "every line blocked by walls or heavy terrain";
 }
 
 // The valid-shots summary: every enemy from the selected operative (or its landing spot
 // while dragging), valid targets first. Rewritten only when the text changes.
-const SHOT_ORDER = ["clear", "cover", "obscured", "concealed", "hidden"];
+const SHOT_ORDER = ["clear", "cover", "obscured", "engaged", "concealed", "hidden"];
 export function renderShots(eye) {
   const box = document.getElementById("shots");
   if (!box) return;
@@ -239,20 +271,13 @@ export function renderShots(eye) {
     : '<span class="hint">Select or drag an operative to see what it could shoot.</span>';
   else {
     const list = [...shotsFrom(eye)].sort((p, q) => SHOT_ORDER.indexOf(p.kind) - SHOT_ORDER.indexOf(q.kind) || p.range - q.range);
-    const valid = list.filter(s => SHOT_KINDS[s.kind].valid).length;
-    const why = s => {
-      const c = s.sight.coverBy, o = s.sight.obscBy;
-      if (s.kind === "clear") return "no cover, not obscured";
-      if (s.kind === "cover") return `${c.id} within ${fmtIn(RULES.cover.range)}″ of it`;
-      if (s.kind === "obscured") return `heavy terrain ${o.id} in the way${c ? `; also in cover (${c.id})` : ""}`;
-      if (s.kind === "concealed") return `on Conceal, in cover (${c.id})`;
-      return "every line blocked by walls or heavy terrain";
-    };
+    const valid = list.filter(s => SHOT_KINDS[s.kind].valid).length, no = cannotShoot(eye);
     html = `<div class="shothead">${eye.op.name}${eye.landing ? " at the landing spot" : ""} · ` +
-      `<b>${valid}</b> valid target${valid === 1 ? "" : "s"} of ${list.length}</div><ul class="shotlist">` +
+      `<b>${valid}</b> valid target${valid === 1 ? "" : "s"} of ${list.length}` +
+      `${no ? ` · <b>can't Shoot</b>: ${noShootWhy(no)}` : ""}</div><ul class="shotlist">` +
       list.map(s => `<li data-shot="${s.kind}" data-oid="${s.target.id}"><i style="background:${SHOT_COL[s.kind]}"></i>` +
         `<b>${s.target.id} ${s.target.name}</b> <span class="k-${s.kind}">${SHOT_KINDS[s.kind].label}</span>` +
-        `${s.kind === "hidden" ? "" : ` · ${s.range.toFixed(1)}″`}<span class="why"> — ${why(s)}</span></li>`).join("") + "</ul>";
+        `${s.kind === "hidden" ? "" : ` · ${s.range.toFixed(1)}″`}<span class="why"> — ${shotWhy(s)}</span></li>`).join("") + "</ul>";
   }
   if (box._html !== html) { box.innerHTML = html; box._html = html; }
 }
@@ -264,7 +289,11 @@ export function allowance() {
   return spec.allow(state.sel);
 }
 export function cancelMode() { state.mode = null; state.drag = null; state.rulerPts = []; hint(HINT0); }
-function refreshSight() { if (state.sel && state.target && state.target.alive) state.lastSight = sightAnalysis(state.sel, state.target); }
+// Judge the shot at the chosen target from where the selected operative stands.
+export function refreshSight() {
+  state.lastShot = state.sel && state.target && state.target.alive
+    ? judgeShot(selEye(), state.target) : null;
+}
 export function toggleOrder(oid) {
   const o = OPS.find(z => z.id === oid);
   if (!o || !o.alive || !mayControl(o)) return;
