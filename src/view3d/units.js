@@ -10,7 +10,7 @@ import { TTS_TEAMS } from '../data/tts-teams.js';
 import { snapBase } from '../config.js';
 import { opR } from '../engine/geometry.js';
 import { BH, BW, OPS } from '../engine/world.js';
-import { steamMaterial, steamParts } from './models.js';
+import { noteFailure, steamMaterial, steamParts } from './models.js';
 
 const PREF = "skirmishtable.minis";
 // per side: the team mod's id (or null for plain tokens) and the model index per operative
@@ -56,12 +56,20 @@ function findBase(meshes, all) {
 }
 // One model as a template group in table space, base centred on the origin, +z mirrored
 // (TTS is left-handed) and the base's diameter in `userData.diameter` (null: no base found).
+// Null when none of the miniature itself arrived: the operative keeps its cylinder.
 const templates = {};
 function template(model) {
   const key = JSON.stringify([model.base, model.parts]);
   if (templates[key]) return templates[key];
   const entries = [model.base, ...model.parts];
-  return templates[key] = Promise.all(entries.map(e => steamParts(e).catch(() => []))).then(lists => {
+  let failed = false;
+  const forget = () => { delete templates[key]; delete ready[key]; };
+  return templates[key] = Promise.all(entries.map(e => steamParts(e).catch(err => {
+    if (err.download && !failed) noteFailure(e.obj || e.bundle, err, 0, forget);   // once per model: Retry rebuilds it whole
+    failed = failed || !!err.download;
+    return [];
+  }))).then(lists => {
+    if (!lists.some((l, i) => l.length && (i || entries.length === 1))) return null;   // some mods put the model on the base
     const root = new THREE.Group(), inner = new THREE.Group();
     inner.matrixAutoUpdate = false;
     inner.matrix.makeScale(1, 1, -1).multiply(new THREE.Matrix4().makeScale(...model.s));
@@ -96,7 +104,7 @@ const keyOf = model => JSON.stringify([model.base, model.parts]);
 function load(model) {
   // one redraw per model when it lands (redraws call back in here: never pile up waiters)
   const key = keyOf(model);
-  if (ready[key] || loading.has(key)) return;
+  if (key in ready || loading.has(key)) return;   // ready[key] null: it didn't download
   loading.add(key);
   template(model).then(t => { ready[key] = t; loading.delete(key); notify(); });
 }
@@ -109,9 +117,9 @@ export function syncBases() {
     const model = modelOf(op);
     let mm;
     if (model) {
-      const t = ready[keyOf(model)];
-      if (!t) { load(model); continue; }      // keep the base it has until this one is measured
-      mm = t.userData.mm || undefined;
+      const key = keyOf(model);
+      if (!(key in ready)) { load(model); continue; }   // keep the base it has until this one is measured
+      mm = (ready[key] && ready[key].userData.mm) || undefined;
     }
     if (op.base !== mm) { if (mm) op.base = mm; else delete op.base; any = true; }
   }
@@ -123,11 +131,12 @@ export function unitObject(op, r) {
   const model = modelOf(op);
   if (!model) return null;
   const key = keyOf(model);
-  if (!ready[key]) { load(model); return null; }
-  // each operative keeps its clone (the table redraws on every change): only the matrix moves
+  if (!(key in ready)) { load(model); return null; }
   const t = ready[key];
+  if (!t) return null;                   // didn't download: the cylinder stands in
+  // each operative keeps its clone (the table redraws on every change): only the matrix moves
   let obj = clones[op.id];
-  if (!obj || obj.userData.key !== key) { obj = clones[op.id] = t.clone(); obj.userData = { ...t.userData, key }; }
+  if (!obj || obj.userData.src !== t) { obj = clones[op.id] = t.clone(); obj.userData = { ...t.userData, key, src: t }; }
   // fit the model's base to the operative's base (no base: the mod's inches), stand it on
   // the table, face the centre
   const k = t.userData.diameter ? 2 * opR(op) / t.userData.diameter : 1;

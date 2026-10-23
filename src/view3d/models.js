@@ -18,7 +18,7 @@ import UnityWorker from '../import/unity-worker.js?worker&inline';
 const MANIFEST_URL = import.meta.env.VITE_MODELS_MANIFEST || "models/manifest.json";
 let manifest = null, manifestBase = "", manifestTried = null, fromSteam = false;
 const modelCache = {}, texCache = {};
-export const progress = { loaded: 0, total: 0, onChange: null };
+export const progress = { loaded: 0, total: 0, failed: 0, onChange: null };
 // the table draws on demand: told whenever a model or texture lands
 let redraw = () => {};
 export const setRedraw = fn => { redraw = fn; };
@@ -44,15 +44,35 @@ export function useSteamSource() {
   progress.loaded = 0; progress.total = steamBytes;
   return manifest;
 }
+// a fetch that didn't arrive (network, CORS, HTTP error), told apart from a file we can't read
+async function download(url) {
+  let r;
+  try { r = await fetch(url); } catch (e) { throw Object.assign(e, { download: true }); }
+  if (!r.ok) throw Object.assign(new Error(`HTTP ${r.status}`), { download: true });
+  return r;
+}
 export async function cachedFetch(url) {
   let cache = null;
   try { cache = await caches.open(STEAM_CACHE); const hit = await cache.match(url); if (hit) return hit; } catch (e) {}
-  const r = await fetch(url);
-  if (!r.ok) throw new Error(`${url}: HTTP ${r.status}`);
+  const r = await download(url);
   if (cache) try { await cache.put(url, r.clone()); } catch (e) {}
   return r;
 }
-// a Unity bundle we can't read: a block filling its bounds, in its own local space
+// Downloads that failed (Steam unreachable, blocked, an error): each keeps the bytes it
+// counted as done and how to forget it, so Retry can fetch it again. Logged with the cause.
+const failures = [];
+export function noteFailure(url, err, bytes, forget) {
+  console.warn(`SkirmishTable: couldn't load ${url}:`, (err && err.message) || err);
+  failures.push({ bytes, forget });
+  progress.failed = failures.length;
+  if (progress.onChange) progress.onChange();
+}
+export function retryFailed() {
+  for (const f of failures.splice(0)) { progress.loaded -= f.bytes; f.forget(); }
+  progress.failed = 0;
+}
+// a Unity bundle we can't read (or a model that didn't download): a block filling its bounds,
+// in its own local space
 function blockPart(info) {
   const [lo, hi] = info.bounds;
   const g = new THREE.BoxGeometry(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]);
@@ -104,7 +124,7 @@ const bundleTex = {}, partsCache = {};
 export function steamParts(e) {
   const key = (e.obj || e.bundle) + "|" + (e.tex || "");
   if (partsCache[key]) return partsCache[key];
-  return partsCache[key] = e.bundle
+  const parts = e.bundle
     ? cachedFetch(e.bundle).then(r => r.arrayBuffer()).then(bundleParts).then(list => list.map(p => {
         const tex = p.tex ? "bundle:" + p.tex.key : null;
         if (tex && !bundleTex[tex]) bundleTex[tex] = p.tex;
@@ -115,12 +135,20 @@ export function steamParts(e) {
         const tex = o.missingUV > o.pos.length / 12 ? null : e.tex || null;
         return [{ geometry: geometryOf(o), tex, png: !!e.png }];
       });
+  // a failed download isn't kept: the next call (Retry) fetches it again
+  return partsCache[key] = parts.catch(err => { if (err.download) delete partsCache[key]; throw err; });
 }
-function steamModel(info) {
+function steamModel(key, info) {
   return steamParts(info).then(parts => {
     bump(info.bytes);
     return parts.length ? parts : blockPart(info);
-  }, () => { bump(info.bytes); return info.bundle ? blockPart(info) : []; });
+  }, err => {
+    // a block in its place (not nothing); one that didn't download is retried, and its
+    // texture won't come either
+    if (err.download) noteFailure(info.obj || info.bundle, err, info.bytes, () => { delete modelCache[key]; });
+    bump(info.bytes); if (info.tex) texDone(info.tex);
+    return blockPart(info);
+  });
 }
 // RGBA rows bottom-up, as Unity stores them: GL's own order, so no flip
 function bundleTexture(key) {
@@ -160,17 +188,36 @@ async function decodeImage(blob) {
   c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
   return c;
 }
-function imageTexture(response, bytes) {
+// each texture's bytes count once toward the progress, whichever model asked for it first
+const texCounted = new Set();
+function texDone(key) {
+  if (texCounted.has(key)) return;
+  texCounted.add(key);
+  bump((manifest && manifest.textures && manifest.textures[key]) || 0);
+}
+// a texture that didn't download: plain grey (an empty one samples black), refetched on Retry
+function greyImage() {
+  const c = document.createElement("canvas");
+  c.width = c.height = 1;
+  const x = c.getContext("2d"); x.fillStyle = "#8e8577"; x.fillRect(0, 0, 1, 1);
+  return c;
+}
+function imageTexture(fetchIt, key) {
   const t = new THREE.Texture();
-  response.then(r => r.blob()).then(decodeImage).then(img => {
+  const fill = () => fetchIt().then(r => r.blob()).then(decodeImage).then(img => {
     t.image = img;
     t.flipY = !(typeof ImageBitmap !== "undefined" && img instanceof ImageBitmap);
     t.needsUpdate = true;
-    bump(bytes);
-  }).catch(() => {});
+    texDone(key);
+  }).catch(err => {
+    t.image = greyImage(); t.flipY = true; t.needsUpdate = true;
+    if (err.download) noteFailure(key, err, 0, () => { fill(); });
+    texDone(key); redraw();
+  });
+  fill();
   return t;
 }
-const steamTexture = url => imageTexture(cachedFetch(url), (manifest && manifest.textures[url]) || 0);
+const steamTexture = url => imageTexture(() => cachedFetch(url), url);
 
 // TTS material types: 0 plastic, 1 wood, 2 metal, 3 cardboard. Kept matte: the scans are
 // photos with their lighting baked in, and a glossy finish throws mirror-like glare on floors
@@ -199,7 +246,7 @@ const bump = n => { progress.loaded += n; if (progress.onChange) progress.onChan
 function loadModel(key) {
   if (modelCache[key]) return modelCache[key];
   const info = manifest.models[key];
-  if (fromSteam) return modelCache[key] = steamModel(info);
+  if (fromSteam) return modelCache[key] = steamModel(key, info);
   return modelCache[key] = fetch(urlOf(info.file)).then(r => r.arrayBuffer()).then(buf => {
     bump(info.bytes);
     const hlen = new DataView(buf).getUint32(0, true);
@@ -219,7 +266,7 @@ function loadModel(key) {
 function texture(path, renderer, steam = fromSteam) {
   if (texCache[path]) return texCache[path];
   const t = bundleTex[path] ? bundleTexture(path) : steam ? steamTexture(path)
-    : imageTexture(fetch(urlOf(path)).then(r => { if (!r.ok) throw new Error(r.status); return r; }), (manifest.textures || {})[path] || 0);
+    : imageTexture(() => download(urlOf(path)), path);
   t.encoding = THREE.sRGBEncoding;
   if (renderer) t.anisotropy = renderer.capabilities.getMaxAnisotropy();   // none yet: measuring bases from the 2D map
   return texCache[path] = t;

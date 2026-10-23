@@ -32,7 +32,7 @@ class Reader {
   f32() { const v = this.dv.getFloat32(this.pos, this.le); this.pos += 4; return v; }
   f64() { const v = this.dv.getFloat64(this.pos, this.le); this.pos += 8; return v; }
   bytes(n) { const b = this.u8.subarray(this.pos, this.pos + n); this.pos += n; return b; }
-  cstr() { const s = this.pos; while (this.u8[this.pos] !== 0) this.pos++; return td.decode(this.u8.subarray(s, this.pos++)); }
+  cstr() { const s = this.pos; while (this.pos < this.u8.length && this.u8[this.pos] !== 0) this.pos++; return td.decode(this.u8.subarray(s, this.pos++)); }
   align(n, base = 0) { const r = (this.pos - base) % n; if (r) this.pos += n - r; }
 }
 
