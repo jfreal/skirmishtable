@@ -8,7 +8,8 @@
 import { state } from '../state.js';
 import { CTRL, ENGAGE_COL, OBJ_R, TEAMCOL, TEAMGREY } from '../config.js';
 import { BH, BW, DECOR, DROPZONES, MAP, OBJECTIVES, OPS, TERRAIN } from '../engine/world.js';
-import { chopIncrements, climbDown, climbUp } from '../engine/movement.js';
+import { chopIncrements } from '../engine/movement.js';
+import { LEVELS, floorAt, onLayer, ptFree } from '../engine/grid.js';
 import { RULES, fmtIn } from '../rules/index.js';
 import { MARKER_R, SHOT_COL, dragLabelText, rangeRings, shotEye, shotHit } from '../ui/board.js';
 import { engagements } from '../engine/engage.js';
@@ -158,7 +159,9 @@ function ndc(ev) {
 function tokenAt(ev) {
   if (!three || !view3D) return null;
   three.raycaster.setFromCamera(ndc(ev), three.camera);
-  const hit = three.raycaster.intersectObjects(three.opsGroup.children.filter(o => o.userData.oid), false)[0];
+  const bodies = [];                 // each operative's pick cylinder, inside its own group
+  three.opsGroup.traverse(o => { if (o.userData.oid) bodies.push(o); });
+  const hit = three.raycaster.intersectObjects(bodies, false)[0];
   if (hit) return OPS.find(o => o.id === hit.object.userData.oid);
   // A fingertip is far bigger than a token on a phone: for touch and pen, take the
   // nearest live operative whose base centre is within a finger's reach on screen.
@@ -167,20 +170,26 @@ function tokenAt(ev) {
   let best = null, bd = reach;
   for (const op of OPS) {
     if (!op.alive) continue;
-    const p = boardToScreen(op.x, op.y, 0.35);
+    const p = boardToScreen(op.x, op.y, (op.z || 0) + 0.35);
     const d = Math.hypot(p.x - ev.clientX, p.y - ev.clientY);
     if (d < bd) { bd = d; best = op; }
   }
   return best;
 }
-// screen -> board inches on the table top (null when the ray misses the table plane)
+// screen -> board inches on the surface under the pointer: [x, y, layer], an upper floor
+// (grid LEVELS, highest first) where the ray meets one with room for the moving base,
+// else the table top (null when the ray misses the table plane)
 function groundPick(ev) {
   three.raycaster.setFromCamera(ndc(ev), three.camera);
   const ray = three.raycaster.ray;
   if (Math.abs(ray.direction.y) < 1e-6) return null;
-  const t = -ray.origin.y / ray.direction.y;
-  if (t < 0) return null;
-  return [ray.origin.x + ray.direction.x * t, ray.origin.z + ray.direction.z * t];
+  const at = h => { const t = (h - ray.origin.y) / ray.direction.y; return t < 0 ? null : [ray.origin.x + ray.direction.x * t, ray.origin.z + ray.direction.z * t]; };
+  for (const L of [...LEVELS].sort((a, b) => b.z - a.z)) {
+    const p = at(L.z);
+    if (p && floorAt(L, p[0], p[1]) && onLayer(L.l, () => ptFree(p[0], p[1]))) return [p[0], p[1], L.l];
+  }
+  const p = at(0);
+  return p && [p[0], p[1], 0];
 }
 // board inches (and height) -> client pixels; used by the browser tests
 export function boardToScreen(x, y, z = 0) {
@@ -200,6 +209,7 @@ function clearGroup(g) {
   while (g.children.length) {
     const o = g.children.pop();
     o.parent = null;
+    if (o.userData.lift) clearGroup(o);   // an operative's group (sync3DOps); never the miniature clones in it
     if (o.geometry && !o.geometry.userData.shared) o.geometry.dispose();
     if (o.material && o.material.map && !o.material.userData.shared) o.material.map.dispose();
     if (o.material && !o.material.userData.shared) o.material.dispose();
@@ -276,7 +286,7 @@ function sightShade(g, eye) {
   for (const sh of shotsFrom(eye)) {
     const o = sh.target, hex = parseInt(SHOT_COL[sh.kind].slice(1), 16), valid = SHOT_KINDS[sh.kind].valid;
     const halo = new THREE.Mesh(torus(opR(o) + 0.22, valid ? 0.08 : 0.035, 40), flatMat(hex, valid ? 1 : 0.75));
-    halo.rotation.x = Math.PI / 2; halo.position.set(o.x, 0.08, o.y);
+    halo.rotation.x = Math.PI / 2; halo.position.set(o.x, (o.z || 0) + 0.08, o.y);
     g.add(halo);
     if (sh.line) {
       const [[ax, ay], [bx, by]] = sh.line;
@@ -285,7 +295,7 @@ function sightShade(g, eye) {
     const hit = shotHit(sh);
     if (hit) dot(g, hit.at[0], hit.at[1], 0.6, 0.12, hex);
     const tag = shotTag(sh.kind);
-    tag.position.set(o.x, 3.0, o.y);
+    tag.position.set(o.x, (o.z || 0) + 3.0, o.y);
     g.add(tag);
   }
 }
@@ -319,9 +329,9 @@ function targetLines(g) {
 const ENGAGE_HEX = parseInt(ENGAGE_COL.slice(1), 16);
 const TRAIL_HEX = 0xe8822e;   // faint orange: the base's path and its outline per increment
 // the red ring round a model in (or about to be in) engagement range
-function engageRing(g, x, y, R) {
+function engageRing(g, x, y, R, z = 0) {
   const ring = new THREE.Mesh(torus(R + 0.34, 0.09, 40), flatMat(ENGAGE_HEX));
-  ring.rotation.x = Math.PI / 2; ring.position.set(x, 0.1, y);
+  ring.rotation.x = Math.PI / 2; ring.position.set(x, z + 0.1, y);
   ring.userData.engaged = true;
   g.add(ring);
 }
@@ -345,54 +355,65 @@ export function sync3DOverlay() {
             const band = new THREE.Mesh(geo("trailbox", () => new THREE.PlaneGeometry(1, 1)), rangeMat(TRAIL_HEX, 0.16));
             band.scale.set(2 * R, L, 1);
             band.rotation.set(-Math.PI / 2, Math.atan2(st.x2 - st.x1, st.y2 - st.y1), 0, "YXZ");   // lay flat, then turn along the leg
-            band.position.set((st.x1 + st.x2) / 2, 0.025, (st.y1 + st.y2) / 2);
+            band.position.set((st.x1 + st.x2) / 2, st.z1 + 0.025, (st.y1 + st.y2) / 2);
             g.add(band);
           }
         }
         const out = new THREE.Mesh(geo(`range ${R}`, () => new THREE.RingGeometry(R - 0.035, R + 0.035, 96)), rangeMat(TRAIL_HEX, 0.6));
-        out.rotation.x = -Math.PI / 2; out.position.set(st.x2, 0.03, st.y2);
+        out.rotation.x = -Math.PI / 2; out.position.set(st.x2, st.z2 + 0.03, st.y2);
         g.add(out);
       }
       let inch = 0;
       for (const st of steps) {
         inch += st.cost;
         const hex = inch <= d.primAllow + 1e-9 || !d.p2 ? colorOf(d.p1.type) : colorOf(d.p2.type);
-        if (st.climb) {
-          const top = st.climb + 0.35, N = 14;
-          let px0 = st.x1, py0 = st.y1, ph0 = lift;
+        if (st.climb && st.kind !== "over") {   // onto a floor: up the side, then across; off one: across, then down
+          const h1 = st.z1 + lift, h2 = st.z2 + lift, up = st.kind === "up", col = up ? 0xb5731f : 0x3f7bb5;
+          const mx = st.x1 + (st.x2 - st.x1) * (up ? 0.35 : 0.65), my = st.y1 + (st.y2 - st.y1) * (up ? 0.35 : 0.65);
+          const hm = Math.max(h1, h2) + 0.2;
+          ribbon(g, st.x1, st.y1, h1, mx, my, hm, 0.1, col);
+          ribbon(g, mx, my, hm, st.x2, st.y2, h2, 0.1, col);
+          const lab = cachedText(up ? `▲${fmtIn(st.up)}″ = ${fmtIn(st.cost)}″` : `▼${st.climb}″ (${fmtIn(st.down)}″) = ${fmtIn(st.cost)}″`,
+            up ? "#8a5414" : "#24507a", "#fbf6ea", 0.75);
+          lab.position.set(mx, hm + 1.0, my);
+          g.add(lab);
+        } else if (st.climb) {
+          const top = st.climb + 0.35, N = 14, base = st.z1 + lift;
+          let px0 = st.x1, py0 = st.y1, ph0 = base;
           for (let i = 1; i <= N; i++) {
-            const t = i / N, h = lift + top * Math.sin(Math.PI * Math.min(1, t * 1.15));
+            const t = i / N, h = base + top * Math.sin(Math.PI * Math.min(1, t * 1.15));
             const xx = st.x1 + (st.x2 - st.x1) * t, yy = st.y1 + (st.y2 - st.y1) * t;
-            ribbon(g, px0, py0, ph0, xx, yy, i === N ? lift : h, 0.1, 0xb5731f);
-            px0 = xx; py0 = yy; ph0 = i === N ? lift : h;
+            ribbon(g, px0, py0, ph0, xx, yy, i === N ? base : h, 0.1, 0xb5731f);
+            px0 = xx; py0 = yy; ph0 = i === N ? base : h;
           }
-          const lab = cachedText(`▲${fmtIn(climbUp(st.climb))}″ ▼${fmtIn(climbDown(st.climb))}″ = ${fmtIn(st.cost)}″`, "#8a5414", "#fbf6ea", 0.75);
-          lab.position.set((st.x1 + st.x2) / 2, top + 1.0, (st.y1 + st.y2) / 2);
+          const lab = cachedText(`▲${fmtIn(st.up)}″ ▼${fmtIn(st.down)}″ = ${fmtIn(st.cost)}″`, "#8a5414", "#fbf6ea", 0.75);
+          lab.position.set((st.x1 + st.x2) / 2, base + top + 1.0, (st.y1 + st.y2) / 2);
           g.add(lab);
         } else {
-          ribbon(g, st.x1, st.y1, lift, st.x2, st.y2, lift, 0.12, hex);
-          dot(g, st.x2, st.y2, lift, st.partial ? 0.13 : 0.09, st.partial ? 0xefe8d8 : hex);
+          ribbon(g, st.x1, st.y1, st.z1 + lift, st.x2, st.y2, st.z2 + lift, 0.12, hex);
+          dot(g, st.x2, st.y2, st.z2 + lift, st.partial ? 0.13 : 0.09, st.partial ? 0xefe8d8 : hex);
         }
       }
     }
     const team = (TEAMCOL[d.op.team] || "#888888").replace("#", "0x");
+    const gz = d.goalZ || 0;
     const ghost = new THREE.Mesh(geo(`ghost ${BR}`, () => new THREE.CylinderGeometry(BR, BR, 1.35, 24)), flatMat(parseInt(team, 16), 0.35));
-    ghost.position.set(d.goal[0], 0.675, d.goal[1]);
+    ghost.position.set(d.goal[0], gz + 0.675, d.goal[1]);
     g.add(ghost);
     const ring = new THREE.Mesh(torus(BR + 0.08, 0.05, 32), flatMat(d.valid && d.path ? 0xf5e9d8 : 0xcf4f37));
-    ring.rotation.x = Math.PI / 2; ring.position.set(d.goal[0], 0.06, d.goal[1]);
+    ring.rotation.x = Math.PI / 2; ring.position.set(d.goal[0], gz + 0.06, d.goal[1]);
     g.add(ring);
     // the ghost's engagement range: lights up red, with a ring on every enemy inside it
     const foes = d.foes || [], hot = foes.length > 0, R = BR + CTRL;
     const er = new THREE.Mesh(geo(`range ${R}`, () => new THREE.RingGeometry(R - 0.035, R + 0.035, 96)), rangeMat(hot ? ENGAGE_HEX : 0xf5e9d8, hot ? 0.95 : 0.6));
-    er.rotation.x = -Math.PI / 2; er.position.set(d.goal[0], 0.035, d.goal[1]);
+    er.rotation.x = -Math.PI / 2; er.position.set(d.goal[0], gz + 0.035, d.goal[1]);
     g.add(er);
     if (hot) {
-      engageRing(g, d.goal[0], d.goal[1], BR);
-      for (const f of foes) engageRing(g, f.x, f.y, opR(f));
+      engageRing(g, d.goal[0], d.goal[1], BR, gz);
+      for (const f of foes) engageRing(g, f.x, f.y, opR(f), f.z);
     }
     const label = cachedText(d.path ? dragLabelText() : "blocked", d.valid && d.path ? "#f5e9d8" : "#ffb4a6", "rgba(20,17,14,0.82)", 0.8);
-    label.position.set(d.goal[0], 2.6, d.goal[1]);
+    label.position.set(d.goal[0], gz + 2.6, d.goal[1]);
     g.add(label);
   }
   // the chosen target: the sight line the engine found, green, or a red line if none
@@ -600,12 +621,15 @@ export function sync3DOps() {
     g.add(disc);
   }
   for (const [a, b] of engagements()) {   // engaged pairs: a red ring round both and a line between
-    ribbon(g, a.x, a.y, 0.1, b.x, b.y, 0.1, 0.07, ENGAGE_HEX);
-    engageRing(g, a.x, a.y, opR(a)); engageRing(g, b.x, b.y, opR(b));
+    ribbon(g, a.x, a.y, (a.z || 0) + 0.1, b.x, b.y, (b.z || 0) + 0.1, 0.07, ENGAGE_HEX);
+    engageRing(g, a.x, a.y, opR(a), a.z); engageRing(g, b.x, b.y, opR(b), b.z);
   }
   let anim = false;
   for (const op of OPS) {
     if (!op.alive) continue;
+    const og = new THREE.Group();     // everything of this operative's, lifted onto the floor it stands on
+    og.position.y = op.z || 0; og.userData.lift = true;
+    g.add(og);
     const moved = op.used.some(u => u === "reposition" || u === "dash" || u === "charge");
     const colHex = parseInt((moved || !op.ready ? TEAMGREY : TEAMCOL)[op.team].replace("#", "0x"), 16);
     // the side's miniature, when it has picked a team: the cylinder stays as the pick target,
@@ -616,48 +640,53 @@ export function sync3DOps() {
     body.position.set(op.x, 0.675, op.y);
     body.castShadow = !mini;
     body.userData.oid = op.id;        // picked by tokenAt()
-    g.add(body);
-    if (mini) g.add(mini);
+    og.add(body);
+    if (mini) og.add(mini);
     if (mini && classicBand()) {
       const band = new THREE.Mesh(torus(BR + 0.06, 0.05, 32), flatMat(colHex));
       band.rotation.x = Math.PI / 2; band.position.set(op.x, 0.04, op.y);
-      g.add(band);
+      og.add(band);
     }
     // the base ring: thin and see-through, out to control range and cut off by terrain;
     // active (selected, or mid-activation) operatives get the picked active style in full colour
     const active = op.ready && ((state.sel && state.sel.id === op.id) || op.used.length > 0);
-    const ring = baseRing(op, BR, lin(active ? parseInt(TEAMCOL[op.team].slice(1), 16) : colHex), op.ready, active);
-    if (ring) { g.add(ring); anim = anim || animates(op.ready, active); }
+    const ring = op.z ? null : baseRing(op, BR, lin(active ? parseInt(TEAMCOL[op.team].slice(1), 16) : colHex), op.ready, active);
+    if (ring) { og.add(ring); anim = anim || animates(op.ready, active); }
+    else if (op.z) {                  // up on a floor, the table-clipped ring doesn't apply: a plain band
+      const band = new THREE.Mesh(torus(BR + 0.06, 0.05, 32), flatMat(colHex));
+      band.rotation.x = Math.PI / 2; band.position.set(op.x, 0.04, op.y);
+      og.add(band);
+    }
     if (RULES.orders && op.order === "engage") {
       const ring = new THREE.Mesh(torus(BR + 0.18, 0.07, 28), flatMat(0xff8c2e));
       ring.rotation.x = Math.PI / 2; ring.position.set(op.x, 0.08, op.y);
-      g.add(ring);
+      og.add(ring);
     }
     if (state.sel && state.sel.id === op.id) {
       // range rings, measured from the base edge as the rules do (as on the 2D map):
       // control range (shaded disc, white ring) and 2″ (red), each labelled
       const disc = new THREE.Mesh(geo(`disc ${BR + CTRL}`, () => new THREE.CircleGeometry(BR + CTRL, 96)), rangeMat(parseInt(TEAMCOL[op.team].slice(1), 16), 0.16));
       disc.rotation.x = -Math.PI / 2; disc.position.set(op.x, 0.02, op.y);
-      g.add(disc);
+      og.add(disc);
       for (const [r, col] of rangeRings()) {
         const R = BR + r, hex = parseInt(col.slice(1), 16);
         // over the sight shade, with a dark edge so the white ring reads on pale ground too
         for (const [w, c, o, h] of [[0.09, 0x14110e, 0.55, 0.045], [0.045, hex, 1, 0.05]]) {
           const ring = new THREE.Mesh(geo(`range ${R} ${w}`, () => new THREE.RingGeometry(R - w, R + w, 128)), rangeMat(c, o));
           ring.rotation.x = -Math.PI / 2; ring.position.set(op.x, h, op.y); ring.renderOrder = 3;
-          g.add(ring);
+          og.add(ring);
         }
         const tag = cachedText(fmtIn(r) + "″", col, "rgba(20,17,14,0.78)", 0.42);
         tag.position.set(op.x, 0.25, op.y - R);
-        g.add(tag);
+        og.add(tag);
       }
     }
     const label = opLabelSprite(op.id);
     label.position.set(op.x, 2.1, op.y);
-    g.add(label);
+    og.add(label);
     const wl = woundSprite(op);       // "12/15" over every model, as TTS wound counters show
     wl.position.set(op.x, 1.62, op.y);
-    g.add(wl);
+    og.add(wl);
   }
   setAnimating(anim);
   requestRender(true);

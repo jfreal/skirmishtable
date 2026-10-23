@@ -33,6 +33,7 @@ A ruleset is a plain object (see `killteam.js`):
 | `increment` | `legCost(L)`: `ceil(L / inc) · inc`, or `L` when 0. Route costs, clamping, the whole-inch optimiser, `straightenIncrements` and `chopIncrements` all go through it |
 | `moves.primary / secondary / charge` | labels, verbs, `allow(op)` and `climb`. Game state keeps fixed ids (`reposition`, `dash`, `charge`); the planner builds both move orders and derives the climbing window from which phases may climb |
 | `climbUp(h)`, `climbDown(h)` | portal and climb-leg costs |
+| `dropFree` (optional) | inches of dropping that are free per action, shared by every drop in it (Kill Team: 2); without it each drop costs `climbDown(h)` |
 | `cover {range, voidWithin}`, `obscure {fromShooter, fromTarget}` or `null` | `sightAnalysis` |
 | `orders` | Conceal/Engage tokens and the "concealed in cover" verdict |
 | `vantage {accurate: [h1, h2]}` or `null` | `judgeShot`: a Vantage Point shooter sees past light cover on a Conceal target, and gets Accurate 1 / 2 against an Engage target in cover at least `h1` / `h2` below |
@@ -51,7 +52,8 @@ route fields depend on the base size and costs.
      for drawing (`TERRAIN`, `DECOR` for fire steps, `OVERHEAD`).
    - **Rect maps** (hand-made Volkus Ruins, Gallowdark): `rasterizeRects()` fills the cells
      each terrain rect covers. Walls are filled per height section.
-3. `buildClearance()` builds the distance map, then the drop zones are set.
+3. `buildClearance()` builds the distance map, `buildLevels()` finds the upper floors, then the
+   drop zones are set.
 4. `buildNav()` finds the climb portals, then `rosterInit()` places the operatives.
 
 `loadMap()` (`ui/controls.js`) adds the UI half: viewBox, static SVG layer, panels and 3D scene.
@@ -122,6 +124,46 @@ parameter `t`. Sight, shadows and climb heights all use it.
   routed), then routes *inside* that range to the goal: it can go round the enemy but not
   back out. Zones the operative starts in stay open (charging, it must stay in that one).
   Rules without a Charge (Infinity: base contact) skip it.
+
+### Upper floors (levels)
+
+`buildLevels()` (`grid.js`) turns each overhead patch of 80+ cells into a level: the patch's
+usual height `zq` is the floor, and it floods out over overhead cells within 1" of that and
+solid cells whose top is within ½" (wall tops flush with the floor). A patch mostly inside a
+bigger one's floor joins it. Each level keeps its floor mask and a clearance map over its
+bounding box (distance to the floor's edge or a wall rising above it), so `G.free`'s rules apply
+up there too. Volkus maps get four: both strongholds at 2.5" and both large ruins at 3".
+
+Layer 0 is the table, layer l is `LEVELS[l - 1]`. `clearAt`, `ptFree` and `segFree` read the
+layer in `grid.LAYER` (`setLayer` / `onLayer`). An operative's height is `op.z` (0 on the
+table), and `layerAt(x, y, z)` / `opLayer(op)` find its layer. Route points carry their layer
+as a fifth element: `[x, y, climbZ, pad, layer]`.
+
+**Level portals** (`findLevelPortals`) join each floor to the layers below it (the table and
+lower floors). Lines are scanned across the floor's box as for climb portals. Where a free spot
+on the lower layer, not more than 0.3" in under the floor, comes within `2·r + 1"` of a spot on
+the floor where the base fits (base edges within 1" horizontally), with nothing taller than the
+floor between, the two become a portal with `lvl: true`, `la` / `lb` and `z` = the climb in
+whole inches. Up costs `across + climbUp(z)` and needs the climbing window; down costs
+`across + climbDown(z)` and is allowed in any move (a Dash may drop). `optimizeIncrements` may
+move a level climb's ends to any route points that pass the same test (`levelHopOK`).
+
+**Costs.** `legCosts(path)` prices every leg: walk, up, down and pad. With `RULES.dropFree`,
+drops share one allowance per action, and `path.split` (set by the drag planner to the first
+action's allowance) is where the second action's allowance starts. `pathTotalInches`,
+`clampPath` and `chopIncrements` all go through it. The search itself prices each drop on its
+own (`climbDown`), which can only be cheaper, and the clamp then applies the real total.
+
+**Route nodes** are every layer's cells (layer l's from `LOFF[l]`), then the start, then the
+portal endpoints. Walking edges stay within a layer; only portals change layers. Control
+ranges are kept per layer, and a Charge stays on its target's layer once it's in.
+
+**Elsewhere.** `foesNear` and `opGap` measure in 3D (`gap3`), so an operative on a floor
+isn't engaged with one on the table beneath it. `standing(p)` reports an operative on a level as
+on a Vantage Point at the level's height, which feeds the existing Vantage rules in `judgeShot`.
+The 3D table lifts the operative's model, the ghost and the route ribbons to their heights,
+and its board picker returns the floor under the pointer (`[x, y, layer]`). The 2D map aims
+for the operative's own layer, or the highest floor with Shift.
 
 ### Climb portals
 

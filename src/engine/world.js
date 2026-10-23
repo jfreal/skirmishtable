@@ -7,7 +7,7 @@ import { GDMAPS } from '../data/gallowdark.js';
 import { VOLKUS_LAYOUTS } from '../data/volkus-layouts.js';
 import { VOLKUS_TERRAIN } from '../data/volkus-ruins.js';
 import { dist, opR } from './geometry.js';
-import { buildClearance, clearAt, composeFine, deriveFineLists, newGrid, rasterizeRects } from './grid.js';
+import { buildClearance, buildLevels, clearAt, composeFine, deriveFineLists, newGrid, rasterizeRects } from './grid.js';
 import { buildNav } from './movement.js';
 import { convertVolkusBag } from '../import/tts.js';
 
@@ -35,7 +35,7 @@ export function mkOp(id, team, name, kind, x, y) {
     marksman: {apl:2, move:6, save:4, wounds:8,  weapons:["firearm","knife"]},
     brawler:  {apl:2, move:6, save:4, wounds:10, weapons:["blades"]},
   }[kind];
-  return {id, team, name, kind, x, y, apl:t.apl, move:t.move, save:t.save,
+  return {id, team, name, kind, x, y, z:0, apl:t.apl, move:t.move, save:t.save,
           maxW:t.wounds, wounds:t.wounds, weapons:t.weapons, weapon:t.weapons[0],
           order:"conceal", ready:true, ap:t.apl, used:[], alive:true};
 }
@@ -125,6 +125,7 @@ export function buildWorld(map) {
     rasterizeRects();
   }
   buildClearance();
+  buildLevels();                                        // upper floors an operative can climb onto
   const dd = MAP.dropDepth || 6;
   DROPZONES = MAP.dropEdge === "long" // long-edge deployment: shallow zones top & bottom
     ? [{team:0, x:0, y:0, w:BW, h:dd}, {team:1, x:0, y:BH-dd, w:BW, h:dd}]

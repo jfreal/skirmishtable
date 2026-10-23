@@ -93,7 +93,7 @@ export function cleanOps(incoming, local) {
     const o = byId.get(l.id);
     if (!o) return { ...l };
     return { ...l,
-      x: num(o.x, l.x), y: num(o.y, l.y),
+      x: num(o.x, l.x), y: num(o.y, l.y), z: Math.max(0, Math.min(8, num(o.z, 0))),
       wounds: Math.max(0, Math.min(l.maxW, num(o.wounds, l.wounds))), ap: num(o.ap, l.ap),
       order: o.order === "engage" ? "engage" : "conceal",
       ready: !!o.ready, alive: !!o.alive,

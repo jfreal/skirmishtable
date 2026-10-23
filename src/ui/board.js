@@ -6,7 +6,8 @@ import { CTRL, ENGAGE_COL, OBJ_R, TEAMCOL, TEAMGREY, TEAMNAME } from '../config.
 import { VOLKUS_PIECES } from '../data/volkus-pieces.js';
 import { isInjured } from '../engine/dice.js';
 import { blobPoints, dist, opR, perimeterPts, px, wallSegments } from '../engine/geometry.js';
-import { chopIncrements, climbDown, climbUp } from '../engine/movement.js';
+import { chopIncrements, climbDown, climbUp, opLayer } from '../engine/movement.js';
+import { LEVELS } from '../engine/grid.js';
 import { engagements } from '../engine/engage.js';
 import { SHOT_KINDS, shotsFrom } from '../engine/shots.js';
 import { lineBlocked, visibilityPolygon } from '../engine/sight.js';
@@ -141,7 +142,8 @@ function renderFineTerrain() {
   el("line", {x1:1, y1:0, x2:1, y2:7, stroke:"#9fb5cb", "stroke-width":2}, pat);
   if (OVERHEAD.length)
     tip(el("path", {d: OVERHEAD.map(r => rp(r)).join(""), fill:"url(#ovhatch)", opacity:0.8}, gStatic),
-      "Upper floor overhead · open ground underneath — bases stand here, and it doesn't block sight (upper-floor Vantage isn't modelled yet)");
+      `Upper floor · open ground underneath, and operatives can climb up onto it (${RULES.moves.primary.label}${RULES.moves.charge ? "/" + RULES.moves.charge.label : ""}: the height, ` +
+      `at least 2"; dropping off is free up to 2" an action) — hold Shift while dragging to aim for the floor, or point at it on the 3D table. Up here is a Vantage Point; sight is still judged on the table's plan`);
   const byKZ = new Map();
   for (const t of TERRAIN) { const key = t.kind + "|" + t.z; if (!byKZ.has(key)) byKZ.set(key, []); byKZ.get(key).push(t); }
   const gShadow = el("g", {opacity:0.16, "clip-path":"url(#boardclip)"}, gStatic);
@@ -285,6 +287,13 @@ function renderOps() {
     else
       el("path", {d:`M ${(tx-4.2).toFixed(1)} ${(ty+2.4).toFixed(1)} a 4.2 4.2 0 0 1 8.4 0 z`, fill:icon}, g);
     if (isInjured(op)) el("circle", {cx:px(op.x-R*0.8), cy:px(op.y+R*0.8), r:4, fill:"#d3a04a", stroke:"#14110e", "stroke-width":1}, g);
+    if (op.z) {                       // up on a floor: a pale double rim and its height
+      el("circle", {cx:px(op.x), cy:px(op.y), r:px(R)+4.5, fill:"none", stroke:"#cfe3ff", "stroke-width":1.6,
+        "stroke-dasharray":"2 2", "pointer-events":"none"}, g);
+      el("text", {x:px(op.x - R * 0.9), y:px(op.y - R * 0.75), "text-anchor":"middle", fill:"#cfe3ff", stroke:"#14110e",
+        "stroke-width":3, "paint-order":"stroke", "font-family":"'JetBrains Mono',monospace", "font-size":10, "font-weight":700,
+        "pointer-events":"none"}, g).textContent = `▲${fmtIn(op.z)}″`;
+    }
     // wound counter under the token
     const wt = el("text", {x:px(op.x), y:px(op.y + R) + 12, "text-anchor":"middle",
       fill: op.wounds <= op.maxW / 4 ? "#e0573f" : isInjured(op) ? "#d3a04a" : "#9fd3a8",
@@ -297,8 +306,8 @@ function renderOps() {
 // the drag has no legal landing), else the selected operative. Shared with the 3D table.
 export function shotEye() {
   const d = state.drag;
-  if (d && d.active) return d.valid && d.path && d.goal ? {x: d.goal[0], y: d.goal[1], team: d.op.team, op: d.op, landing: true} : null;
-  return state.sel && state.sel.alive ? {x: state.sel.x, y: state.sel.y, team: state.sel.team, op: state.sel, landing: false} : null;
+  if (d && d.active) return d.valid && d.path && d.goal ? {x: d.goal[0], y: d.goal[1], z: d.goalZ || 0, team: d.op.team, op: d.op, landing: true} : null;
+  return state.sel && state.sel.alive ? {x: state.sel.x, y: state.sel.y, z: state.sel.z || 0, team: state.sel.team, op: state.sel, landing: false} : null;
 }
 // one colour per shot judgement, on the 2D map, the 3D table and the side panel
 export const SHOT_COL = {clear: "#3f9a3a", cover: "#d79a1e", obscured: "#8d5fa8", concealed: "#a8873f", engaged: "#b5523b", hidden: "#857b70"};
@@ -343,6 +352,8 @@ export function dragLabelText() {
   let txt = chained
     ? `${moveLabel(d.p1.type)} ${fmtIn(d.primAllow)}" + ${moveLabel(d.p2.type)} ${fmtIn(d.total - d.primAllow)}"/${fmtIn(d.secAllow)}"`
     : `${moveLabel(d.p1.type)} ${fmtIn(d.total)}" / ${fmtIn(d.primAllow)}"`;
+  if (d.goalZ) txt += ` ▲${fmtIn(d.goalZ)}″ ${LEVELS[d.goalLayer - 1].name}`;
+  else if (d.path && opLayer(d.op)) txt += " ▼ table";
   if (d.partial) txt += " (closest reachable)";
   else if (d.clamped && d.total >= d.primAllow + d.secAllow - 1e-9) txt += " (max)";
   if (!d.valid) txt += ` — ${d.why || "occupied"}`;
@@ -388,12 +399,14 @@ export function renderOverlay(cursor) {
       for (const st of steps) {
         inch += st.cost;
         const c = inch <= state.drag.primAllow + 1e-9 || !state.drag.p2 ? colorOf(state.drag.p1.type) : colorOf(state.drag.p2.type);
-        if (st.climb) { // climb over a wall: bold amber rungs + the height paid
+        if (st.climb) { // a climb (over a wall, or onto a floor) or a drop: bold amber rungs + the height paid
           el("line", {x1:px(st.x1), y1:px(st.y1), x2:px(st.x2), y2:px(st.y2),
-            stroke:"#b5731f", "stroke-width":3, "stroke-dasharray":"3 3"}, gOverlay);
+            stroke: st.kind === "drop" ? "#3f7bb5" : "#b5731f", "stroke-width":3, "stroke-dasharray":"3 3"}, gOverlay);
           // climb label sits below the rungs on a light backing, clear of the move label above
           const lx = px((st.x1+st.x2)/2), ly = px(Math.max(st.y1, st.y2)) + 22;
-          const ltxt = `▲${fmtIn(climbUp(st.climb))}″ up ▼${fmtIn(climbDown(st.climb))}″ down + across = ${fmtIn(st.cost)}″${st.pad ? ` (incl. ${fmtIn(st.pad)}″ wait)` : ""}`;
+          const ltxt = (st.kind === "up" ? `▲${fmtIn(st.up)}″ up onto the floor`
+            : st.kind === "drop" ? `▼ drop ${st.climb}″ (${fmtIn(st.down)}″ counted)`
+            : `▲${fmtIn(st.up)}″ up ▼${fmtIn(st.down)}″ down`) + ` + across = ${fmtIn(st.cost)}″${st.pad ? ` (incl. ${fmtIn(st.pad)}″ wait)` : ""}`;
           el("rect", {x: lx - ltxt.length * 3.85 - 6, y: ly - 13, width: ltxt.length * 7.7 + 12, height: 18, rx: 4,
             fill:"#fbf6ea", "fill-opacity":0.92, stroke:"#b5731f", "stroke-width":1}, gOverlay);
           el("text", {x: lx, y: ly, "text-anchor":"middle", fill:"#8a5414",
