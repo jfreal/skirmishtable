@@ -8,7 +8,10 @@ export const px = v => v * S;
 export function dist(ax, ay, bx, by) { return Math.hypot(bx-ax, by-ay); }
 // an operative's base radius: its own base (op.base, mm, from its miniature) or the ruleset's
 export const opR = op => op && op.base ? op.base / 50.8 : BASE_R;
-export function opGap(a, b) { return dist(a.x,a.y,b.x,b.y) - opR(a) - opR(b); } // base-edge to base-edge
+// base-edge to base-edge; with one base higher up (on an upper floor), the distance in 3D
+// from the nearer base's edge to the other's
+export const gap3 = (g, dz) => dz ? Math.hypot(Math.max(0, g), dz) : g;
+export function opGap(a, b) { return gap3(dist(a.x,a.y,b.x,b.y) - opR(a) - opR(b), Math.abs((a.z || 0) - (b.z || 0))); }
 export function perimeterPts(op, n, r = opR(op)) {
   const pts=[]; for (let i=0;i<n;i++){ const a=2*Math.PI*i/n;
     pts.push([op.x+r*Math.cos(a), op.y+r*Math.sin(a)]); } return pts;

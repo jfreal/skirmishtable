@@ -5,7 +5,7 @@
  * the side panel all read this while an operative is selected or being dragged.
  */
 import { foesNear } from './engage.js';
-import { G } from './grid.js';
+import { G, LEVELS, layerAt } from './grid.js';
 import { sightAnalysis } from './sight.js';
 import { OPS } from './world.js';
 import { RULES } from '../rules/index.js';
@@ -20,12 +20,12 @@ export const SHOT_KINDS = {
 };
 
 // How high an operative's base stands above the table, and whether it stands on a terrain
-// feature with the Vantage Point trait. TODO: the engine has no model heights or terrain
-// traits yet (fire steps are C_STEP cells drawn from DECOR, upper floors are overhead
-// C_OVER cells), so this only reads `z` / `vantage` when a caller sets them on the point,
-// and is 0 / false on the table otherwise.
+// feature with the Vantage Point trait: an upper floor (grid LEVELS) it has climbed onto
+// is one. `z` / `vantage` set on the point win. TODO: fire steps (C_STEP cells) aren't
+// Vantage Points yet, and sight itself is still judged on the table's 2D grid.
 export function standing(p) {
-  return {z: p.z || 0, vantage: !!p.vantage};
+  const z = p.z || 0, l = z ? layerAt(p.x, p.y, z) : 0;
+  return {z, vantage: p.vantage !== undefined ? !!p.vantage : !!(l && LEVELS[l - 1].vantage)};
 }
 
 // Why the operative at eye {x, y, team, op?} can't take a Shoot action at all, or null:
@@ -35,7 +35,7 @@ export function cannotShoot(eye) {
   const op = eye.op || eye;
   if (RULES.orders && op.order === "conceal") return {why: "conceal"};
   if (eye.team === undefined) return null;
-  const by = foesNear(eye.x, eye.y, eye.team)[0];
+  const by = foesNear(eye.x, eye.y, eye.team, null, undefined, eye.z || 0)[0];
   return by ? {why: "engaged", by} : null;
 }
 
@@ -57,7 +57,7 @@ export function judgeShot(eye, target) {
   // the friend in melee with the target: one of the shooter's side within the target's
   // engagement range (never the shooter itself: it is at the eye point)
   const engagedBy = eye.team === undefined ? null
-    : foesNear(target.x, target.y, target.team, shooter.id ?? null).find(o => o.team === eye.team && o !== shooter) || null;
+    : foesNear(target.x, target.y, target.team, shooter.id ?? null, undefined, target.z || 0).find(o => o.team === eye.team && o !== shooter) || null;
   const V = RULES.vantage, up = standing(eye), drop = up.z - standing(target).z;
   const onVantage = !!(V && up.vantage);
   const obscured = !!(s.visible && s.obscBy), inCover = !!(s.visible && s.coverBy);
@@ -83,8 +83,8 @@ export function judgeShot(eye, target) {
 let memo = {g: null, key: null, shots: []};
 export function shotsFrom(eye) {
   const foes = OPS.filter(o => o.alive && o.team !== eye.team);
-  const key = RULES.id + "|" + eye.x.toFixed(3) + "," + eye.y.toFixed(3) + "," + (eye.op ? eye.op.id : "") + "|" +
-    OPS.map(o => `${o.id}${o.alive ? "" : "x"}@${o.x.toFixed(3)},${o.y.toFixed(3)},${o.order},${o.team}`).join(";");
+  const key = RULES.id + "|" + eye.x.toFixed(3) + "," + eye.y.toFixed(3) + "," + (eye.z || 0) + "," + (eye.op ? eye.op.id : "") + "|" +
+    OPS.map(o => `${o.id}${o.alive ? "" : "x"}@${o.x.toFixed(3)},${o.y.toFixed(3)},${o.z || 0},${o.order},${o.team}`).join(";");
   if (memo.g === G && memo.key === key) return memo.shots;
   memo = {g: G, key, shots: foes.map(o => judgeShot(eye, o))};
   return memo.shots;

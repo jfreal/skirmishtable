@@ -11,7 +11,7 @@
 export const LINK_V = 1;
 export const SOFT_MAX = 2000;            // characters a link can have and still survive most chat apps
 const HARD_MAX = 200000;                 // refuse to decode anything bigger
-const OP_KEYS = ["id", "x", "y", "wounds", "ap", "order", "ready", "alive", "weapon", "used"];
+const OP_KEYS = ["id", "x", "y", "wounds", "ap", "order", "ready", "alive", "weapon", "used", "z"];
 
 export function packGame(g, at = Date.now()) {
   const { ops, ...rest } = g;

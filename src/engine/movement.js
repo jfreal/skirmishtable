@@ -4,17 +4,20 @@
  */
 import { CTRL } from '../config.js';
 import { dist, opR } from './geometry.js';
-import { C_LIGHT, C_WALL, FEATS, G, GRES, NAV_R, ZONES, gridWalk, ptFree, segFree, setNavRadius, setZones, startTol,
-         zoneFree, zoneSegFree, zqHeight } from './grid.js';
+import { C_LIGHT, C_WALL, FEATS, G, GRES, LEVELS, NAV_R, ZONES, clearAt, floorAt, gridWalk, layerAt, layerBox, layerZ, layerZq,
+         onLayer, ptFree, segFree, setLayer, setNavRadius, setZones, startTol, zoneFree, zoneSegFree, zqHeight } from './grid.js';
 import { BH, BW, OPS } from './world.js';
 import { RULES, legCost } from '../rules/index.js';
 
-// what stops a base (the nav radius: see useBase) landing at (x, y)
-export function placeBlocked(x, y, excludeId) {
+// the layer an operative stands on: 0 = the table, l = LEVELS[l - 1] (an upper floor)
+export const opLayer = o => layerAt(o.x, o.y, o.z);
+// what stops a base (the nav radius: see useBase) landing at (x, y) on layer l; only
+// operatives on the same layer get in the way (one can stand under another's floor)
+export function placeBlocked(x, y, excludeId, l = 0) {
   const R = NAV_R;
   if (x<R-1e-9||x>BW-R+1e-9||y<R-1e-9||y>BH-R+1e-9) return {id:"board edge"};
-  if (!ptFree(x, y)) return {id:"terrain"};
-  for (const o of OPS) if (o.alive && o.id !== excludeId && dist(x,y,o.x,o.y) < R + opR(o)) return {id:o.name};
+  if (!onLayer(l, () => ptFree(x, y))) return {id: l ? "no room on the floor" : "terrain"};
+  for (const o of OPS) if (o.alive && o.id !== excludeId && opLayer(o) === l && dist(x,y,o.x,o.y) < R + opR(o)) return {id:o.name};
   return null;
 }
 
@@ -26,16 +29,30 @@ export function placeBlocked(x, y, excludeId) {
    across PLUS the vertical, priced by the ruleset (Kill Team: up the terrain's height,
    at least 2", and back down past the free 2"). It's only usable while the inches being
    spent belong to a move action the ruleset lets climb (Kill Team: Reposition or
-   Charge, never Dash). noclimb terrain (Gallowdark bulkheads) never is. */
+   Charge, never Dash). noclimb terrain (Gallowdark bulkheads) never is.
+   Upper floors (grid LEVELS) are layers of their own, joined to the layer below by level
+   portals: a point on the lower layer with its base edge within 1" of the floor and a
+   point on the floor where the whole base fits. Going up is a climb (the height, at
+   least 2", only in a move that can climb); coming down is a drop, allowed in any move,
+   and the ruleset's free drop (Kill Team: 2") is shared by every drop in one action. */
 export const climbUp = h => RULES.climbUp(h);
 export const climbDown = h => RULES.climbDown(h);
 export const climbCost = h => h > 0 ? climbUp(h) + climbDown(h) : 0;   // walking legs: no climb, no cost
-export let PORTALS = [], EPX = new Float64Array(0), EPY = new Float64Array(0), EP_CELLS = [], CELL_SP = new Map(), NAVVER = 0;
+export let PORTALS = [], EPX = new Float64Array(0), EPY = new Float64Array(0), EPL = new Uint8Array(0), EP_CELLS = [], CELL_SP = new Map(), NAVVER = 0;
+// Route nodes: every layer's cells (layer l from LOFF[l]; the table's first), then the
+// start, then the portal endpoints.
+export let LOFF = [0], NCELL = 0;
+const cellLayer = k => { let l = LOFF.length - 2; while (l > 0 && k < LOFF[l]) l--; return l; };
 export const FIELDS = new Map();
 const NAVS = new Map();               // base radius -> its portals (a bigger base needs wider gaps)
 // Tallest terrain a base passes over on a straight crossing (its middle and both
 // flanks); Infinity if any of it can't be climbed.
 export function crossingHeight(ax, ay, bx, by) {
+  const zq = crossingZq(ax, ay, bx, by);
+  return isFinite(zq) ? (zq ? zqHeight(zq) : 0) : Infinity;
+}
+// the same, as the tallest cell's half-inch height code (0 = nothing in the way)
+export function crossingZq(ax, ay, bx, by) {
   const L = dist(ax, ay, bx, by); if (L < 1e-9) return 0;
   const f = NAV_R * 0.82;                      // the base's flanks
   const qx = -(by - ay) / L * f, qy = (bx - ax) / L * f;
@@ -51,7 +68,7 @@ export function crossingHeight(ax, ay, bx, by) {
     });
     if (bad) return Infinity;
   }
-  return zq ? zqHeight(zq) : 0;
+  return zq;
 }
 export function findPortals() {
   PORTALS = [];
@@ -71,7 +88,7 @@ export function findPortals() {
     if (len > MAX_ACROSS) return;
     const z = crossingHeight(ax, ay, bx, by);
     if (!isFinite(z) || z <= 0 || dup(ax, ay, bx, by)) return;
-    const P = {ax, ay, bx, by, z, len};
+    const P = {ax, ay, bx, by, z, len, la: 0, lb: 0};
     PORTALS.push(P);
     for (const [x, y] of [[ax, ay], [bx, by]]) {
       const key = bk(x, y); let l = buckets.get(key); if (!l) buckets.set(key, l = []); l.push(P);
@@ -98,20 +115,85 @@ export function findPortals() {
     }
   }
 }
-// free cells near a point that a base can slide to in a straight line
-export function attachCells(x, y, radii, tol, free = G.free) {
-  for (const r of radii) {
-    const out = [], ri = Math.ceil(r / GRES), ci = Math.floor(x / GRES), cj = Math.floor(y / GRES);
-    for (let j = Math.max(0, cj - ri); j <= Math.min(G.ny - 1, cj + ri); j++)
-      for (let i = Math.max(0, ci - ri); i <= Math.min(G.nx - 1, ci + ri); i++) {
-        const k = j * G.nx + i;
-        if (!free[k]) continue;
-        const cx = (i + 0.5) * GRES, cy = (j + 0.5) * GRES;
-        if (dist(x, y, cx, cy) <= r && segFree(x, y, cx, cy, tol)) out.push(k);
+// a spot more than 0.3" in under floor L (a base whose middle is just under its lip is
+// still outside it)
+const underFloor = (L, x, y) => floorAt(L, x, y) && onLayer(L.l, () => clearAt(x, y)) > 0.3;
+// Level portals: scan straight lines across each upper floor (four directions, 0.5"
+// apart, 0.05" steps). Where a free spot on a lower layer (the table, or a lower floor),
+// not under this floor, comes within 2·r + 1" of a spot on the floor where the base fits
+// (base edges within 1" horizontally), with nothing taller than the floor between them,
+// the two become a portal: a climb up, or a drop down.
+export function findLevelPortals() {
+  const MAXD = 2 * NAV_R + 1, STEP = 0.05, SPACING = 0.5, NEAR = 0.45, buckets = new Map();
+  const bk = (x, y) => (Math.floor(x) + 2) * 64 + Math.floor(y) + 2;
+  for (const L of LEVELS) for (const la of [0, ...LEVELS.filter(M => M.zq < L.zq).map(M => M.l)]) {
+    const lb = L.l, key = la * 64 + lb;
+    const dup = (ax, ay, bx, by) => {
+      for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++)
+        for (const P of buckets.get(bk(ax + dx, ay + dy)) || [])
+          if (P.key === key && Math.hypot(P.ax - ax, P.ay - ay) < NEAR && Math.hypot(P.bx - bx, P.by - by) < NEAR) return true;
+      return false;
+    };
+    const add = (ax, ay, bx, by) => {
+      const len = Math.hypot(bx - ax, by - ay);
+      if (len > MAXD + 1e-9 || crossingZq(ax, ay, bx, by) > L.zq + 1 || dup(ax, ay, bx, by)) return;
+      const P = {ax, ay, bx, by, z: zqHeight(L.zq - layerZq(la)), len, la, lb, lvl: true, key};
+      PORTALS.push(P);
+      const k = bk(ax, ay); let l = buckets.get(k); if (!l) buckets.set(k, l = []); l.push(P);
+    };
+    const isA = (x, y) => { if (underFloor(L, x, y)) return false; setLayer(la); return ptFree(x, y); };
+    const isB = (x, y) => { setLayer(lb); return ptFree(x, y); };
+    const X0 = L.i0 * GRES - MAXD, X1 = (L.i0 + L.w) * GRES + MAXD, Y0 = L.j0 * GRES - MAXD, Y1 = (L.j0 + L.h) * GRES + MAXD;
+    const C = [[X0, Y0], [X1, Y0], [X0, Y1], [X1, Y1]];
+    for (const [dx, dy] of [[1, 0], [0, 1], [Math.SQRT1_2, Math.SQRT1_2], [Math.SQRT1_2, -Math.SQRT1_2]]) {
+      const qx = -dy, qy = dx;
+      const os = C.map(c => c[0] * qx + c[1] * qy), ss = C.map(c => c[0] * dx + c[1] * dy);
+      const o1 = Math.max(...os), s0 = Math.min(...ss), s1 = Math.max(...ss);
+      for (let o = Math.min(...os) + SPACING / 2; o < o1; o += SPACING) {
+        let lastA = null, lastB = null, wasA = false, wasB = false;
+        for (let s = s0; s <= s1; s += STEP) {
+          const x = dx * s + qx * o, y = dy * s + qy * o;
+          if (x < 0 || y < 0 || x > BW || y > BH) { wasA = wasB = false; continue; }
+          const a = isA(x, y), b = isB(x, y);
+          if (b && !wasB && lastA && s - lastA.s <= MAXD && (!lastB || lastA.s > lastB.s)) add(lastA.x, lastA.y, x, y);
+          if (a && !wasA && lastB && s - lastB.s <= MAXD && (!lastA || lastB.s > lastA.s)) add(x, y, lastB.x, lastB.y);
+          if (a) lastA = {x, y, s};
+          if (b) lastB = {x, y, s};
+          wasA = a; wasB = b;
+        }
       }
-    if (out.length) return out;
+    }
+    setLayer(0);
   }
-  return [];
+}
+// Can a base climb straight from (ax, ay) on layer la up onto (bx, by) on the higher layer
+// lb (or drop the other way)? The same test the level portals pass: both spots free, the
+// lower one not under that floor, base edges within 1" horizontally, nothing taller than
+// the floor in between.
+export function levelHopOK(ax, ay, la, bx, by, lb) {
+  if (layerZq(la) > layerZq(lb)) return levelHopOK(bx, by, lb, ax, ay, la);
+  const L = LEVELS[lb - 1];
+  return !!L && Math.hypot(bx - ax, by - ay) <= 2 * NAV_R + 1 + 1e-9 && !underFloor(L, ax, ay) &&
+    onLayer(la, () => ptFree(ax, ay)) && onLayer(lb, () => ptFree(bx, by)) && crossingZq(ax, ay, bx, by) <= L.zq + 1;
+}
+// free cells of layer l near a point that a base can slide to in a straight line, as
+// route nodes (free: that layer's free cells, its box)
+export function attachCells(x, y, radii, tol, l = 0, free = layerBox(l).free) {
+  const B = layerBox(l), off = LOFF[l] || 0;
+  return onLayer(l, () => {
+    for (const r of radii) {
+      const out = [], ri = Math.ceil(r / GRES), ci = Math.floor(x / GRES) - B.i0, cj = Math.floor(y / GRES) - B.j0;
+      for (let j = Math.max(0, cj - ri); j <= Math.min(B.h - 1, cj + ri); j++)
+        for (let i = Math.max(0, ci - ri); i <= Math.min(B.w - 1, ci + ri); i++) {
+          const k = j * B.w + i;
+          if (!free[k]) continue;
+          const cx = (B.i0 + i + 0.5) * GRES, cy = (B.j0 + j + 0.5) * GRES;
+          if (dist(x, y, cx, cy) <= r && segFree(x, y, cx, cy, tol)) out.push(off + k);
+        }
+      if (out.length) return out;
+    }
+    return [];
+  });
 }
 // A new map: drop every base size's portals and build the ruleset base's.
 export function buildNav() { NAVS.clear(); FIELDS.clear(); NAVVER++; navFor(NAV_R); }
@@ -120,20 +202,24 @@ export function buildNav() { NAVS.clear(); FIELDS.clear(); NAVVER++; navFor(NAV_
 export function useBase(r) {
   setNavRadius(r);
   const N = NAVS.get(r);
-  if (N) ({PORTALS, EPX, EPY, EP_CELLS, CELL_SP} = N);
+  if (N) ({PORTALS, EPX, EPY, EPL, EP_CELLS, CELL_SP, LOFF, NCELL} = N);
   else navFor(r);
 }
 function navFor(r) {
-  findPortals();
-  const NE = PORTALS.length * 2, NC = G.n;
-  EPX = new Float64Array(NE); EPY = new Float64Array(NE); EP_CELLS = []; CELL_SP = new Map();
-  PORTALS.forEach((P, p) => { EPX[2 * p] = P.ax; EPY[2 * p] = P.ay; EPX[2 * p + 1] = P.bx; EPY[2 * p + 1] = P.by; });
+  LOFF = [0, G.n];
+  for (const L of LEVELS) LOFF.push(LOFF[LOFF.length - 1] + L.w * L.h);
+  NCELL = LOFF[LOFF.length - 1];
+  onLayer(0, findPortals);
+  findLevelPortals();
+  const NE = PORTALS.length * 2, NC = NCELL;
+  EPX = new Float64Array(NE); EPY = new Float64Array(NE); EPL = new Uint8Array(NE); EP_CELLS = []; CELL_SP = new Map();
+  PORTALS.forEach((P, p) => { EPX[2 * p] = P.ax; EPY[2 * p] = P.ay; EPX[2 * p + 1] = P.bx; EPY[2 * p + 1] = P.by; EPL[2 * p] = P.la; EPL[2 * p + 1] = P.lb; });
   for (let e = 0; e < NE; e++) {
-    const cells = attachCells(EPX[e], EPY[e], [0.3, 0.6], 0);
+    const cells = attachCells(EPX[e], EPY[e], [0.3, 0.6], 0, EPL[e]);
     EP_CELLS.push(cells);
     for (const k of cells) { let l = CELL_SP.get(k); if (!l) CELL_SP.set(k, l = []); l.push(NC + 1 + e); }
   }
-  NAVS.set(r, {PORTALS, EPX, EPY, EP_CELLS, CELL_SP});
+  NAVS.set(r, {PORTALS, EPX, EPY, EPL, EP_CELLS, CELL_SP, LOFF, NCELL});
 }
 export function Heap() { this.k = []; this.v = []; this.top = 0; }
 Heap.prototype.push = function(key, val) {
@@ -150,38 +236,53 @@ Heap.prototype.pop = function() {
   }
   this.top = tk; return tv;
 };
-// Shortest-route field from (sx, sy). Nodes: every grid cell, then the start, then the
-// portal endpoints. climbLo..climbHi is the Reposition/Charge phase's window in inches
-// from the start of the whole move: a climb may only start at/after climbLo (arriving
-// earlier burns "pad" inches waiting at the wall) and must finish by climbHi
-// (climbHi < 0 = no climbing at all). Nodes beyond `bound` inches aren't expanded.
-export function buildField(sx, sy, lo, hi, bound) {
-  const nx = G.nx, ny = G.ny, NC = G.n, S0 = NC, N = NC + 1 + EPX.length;
+// Shortest-route field from (sx, sy) on layer sl. Nodes: every layer's grid cells, then
+// the start, then the portal endpoints. climbLo..climbHi is the Reposition/Charge phase's
+// window in inches from the start of the whole move: a climb may only start at/after
+// climbLo (arriving earlier burns "pad" inches waiting at the wall) and must finish by
+// climbHi (climbHi < 0 = no climbing at all). A drop off a floor is allowed any time.
+// Nodes beyond `bound` inches aren't expanded.
+export function buildField(sx, sy, lo, hi, bound, sl = 0) {
+  const nx = G.nx, ny = G.ny, NC = NCELL, NC0 = G.n, S0 = NC, N = NC + 1 + EPX.length, NL = LOFF.length - 1;
   const g = new Float64Array(N).fill(Infinity), par = new Int32Array(N).fill(-1);
   const vz = new Uint8Array(N), vpad = new Uint8Array(N), closed = new Uint8Array(N);
   // control range zones (planRoute): their own free cells, and no climb into or across one
-  const free = ZONES ? zoneFree() : G.free;
-  const epOK = ZONES ? PORTALS.map(P => zoneSegFree(P.ax, P.ay, P.bx, P.by)) : null;
-  const tol = startTol(sx, sy), sCells = attachCells(sx, sy, [0.3, 0.9, 1.7], tol, free), sSet = new Set(sCells);
-  const X = k => k < NC ? (k % nx + 0.5) * GRES : k === S0 ? sx : EPX[k - NC - 1];
-  const Y = k => k < NC ? ((k / nx | 0) + 0.5) * GRES : k === S0 ? sy : EPY[k - NC - 1];
+  const FR = [];
+  for (let l = 0; l < NL; l++) FR.push(ZONES ? zoneFree(l) : layerBox(l).free);
+  const epOK = ZONES ? PORTALS.map(P => P.lvl
+    ? onLayer(P.la, () => ptFree(P.ax, P.ay)) && onLayer(P.lb, () => ptFree(P.bx, P.by))
+    : onLayer(0, () => zoneSegFree(P.ax, P.ay, P.bx, P.by))) : null;
+  const tol = onLayer(sl, () => startTol(sx, sy)), sCells = attachCells(sx, sy, [0.3, 0.9, 1.7], tol, sl, FR[sl]), sSet = new Set(sCells);
+  const lay = k => k < NC0 ? 0 : k < NC ? cellLayer(k) : k === S0 ? sl : EPL[k - NC - 1];
+  const X = k => {
+    if (k < NC0) return (k % nx + 0.5) * GRES;
+    if (k < NC) { const l = cellLayer(k), B = LEVELS[l - 1]; return (B.i0 + (k - LOFF[l]) % B.w + 0.5) * GRES; }
+    return k === S0 ? sx : EPX[k - NC - 1];
+  };
+  const Y = k => {
+    if (k < NC0) return ((k / nx | 0) + 0.5) * GRES;
+    if (k < NC) { const l = cellLayer(k), B = LEVELS[l - 1]; return (B.j0 + ((k - LOFF[l]) / B.w | 0) + 0.5) * GRES; }
+    return k === S0 ? sy : EPY[k - NC - 1];
+  };
+  const isFree = k => { const l = k < NC0 ? 0 : cellLayer(k); return FR[l][k - LOFF[l]]; };
   const nb = [];
   const nbrs = k => {
     nb.length = 0;
     if (k < NC) {
-      const i = k % nx, j = k / nx | 0;
+      const l = k < NC0 ? 0 : cellLayer(k), off = LOFF[l], f = FR[l], loc = k - off;
+      const w = l ? LEVELS[l - 1].w : nx, h = l ? LEVELS[l - 1].h : ny, i = loc % w, j = loc / w | 0;
       for (let dj = -1; dj <= 1; dj++) {
-        const jj = j + dj; if (jj < 0 || jj >= ny) continue;
+        const jj = j + dj; if (jj < 0 || jj >= h) continue;
         for (let di = -1; di <= 1; di++) {
-          const ii = i + di; if ((!di && !dj) || ii < 0 || ii >= nx) continue;
-          const m = jj * nx + ii; if (!free[m]) continue;
-          if (di && dj && !free[j * nx + ii] && !free[jj * nx + i]) continue; // no squeezing through a pinch
-          nb.push(m);
+          const ii = i + di; if ((!di && !dj) || ii < 0 || ii >= w) continue;
+          const m = jj * w + ii; if (!f[m]) continue;
+          if (di && dj && !f[j * w + ii] && !f[jj * w + i]) continue; // no squeezing through a pinch
+          nb.push(off + m);
         }
       }
       const sp = CELL_SP.get(k); if (sp) for (const s of sp) if (!epOK || epOK[(s - NC - 1) >> 1]) nb.push(s);
       if (sSet.has(k)) nb.push(S0);
-    } else for (const m of (k === S0 ? sCells : EP_CELLS[k - NC - 1])) if (free[m]) nb.push(m);
+    } else for (const m of (k === S0 ? sCells : EP_CELLS[k - NC - 1])) if (isFree(m)) nb.push(m);
     return nb;
   };
   const H = new Heap();
@@ -192,6 +293,7 @@ export function buildField(sx, sy, lo, hi, bound) {
     const kx = X(k), ky = Y(k);
     if (k !== S0 && !vz[k]) {           // lazy: confirm the straight run from the assumed parent
       const p = par[k];
+      setLayer(lay(k));
       if (!segFree(X(p), Y(p), kx, ky, p === S0 ? tol : 0)) {
         let bg = Infinity, bp = -1;
         for (const m of nbrs(k)) if (closed[m]) { const c = g[m] + dist(X(m), Y(m), kx, ky); if (c < bg) { bg = c; bp = m; } }
@@ -207,11 +309,12 @@ export function buildField(sx, sy, lo, hi, bound) {
       const c = gp + dist(ppx, ppy, X(m), Y(m));
       if (c < g[m] - 1e-9) { g[m] = c; par[m] = p; vz[m] = 0; vpad[m] = 0; H.push(c, m); }
     }
-    if (k > S0 && hi >= 0) {            // a portal endpoint: climb up and over to its mate
-      const e = k - NC - 1, mate = NC + 1 + (e ^ 1), P = PORTALS[e >> 1];
-      if (!closed[mate] && (!epOK || epOK[e >> 1])) {
-        const base = Math.max(g[k], lo), c = base + P.len + climbCost(P.z);
-        if (c <= hi + 1e-9 && c < g[mate] - 1e-9) {
+    if (k > S0) {                       // a portal endpoint: climb up (and over) to its mate, or drop
+      const e = k - NC - 1, mate = NC + 1 + (e ^ 1), P = PORTALS[e >> 1], drop = P.lvl && (e & 1);
+      if (!closed[mate] && (!epOK || epOK[e >> 1]) && (drop || hi >= 0)) {
+        const base = drop ? g[k] : Math.max(g[k], lo);
+        const c = base + P.len + (!P.lvl ? climbCost(P.z) : drop ? climbDown(P.z) : climbUp(P.z));
+        if ((drop || c <= hi + 1e-9) && c < g[mate] - 1e-9) {
           g[mate] = c; par[mate] = k; vz[mate] = P.z;
           vpad[mate] = Math.max(0, Math.ceil(base - g[k] - 1e-9));
           H.push(c, mate);
@@ -219,23 +322,25 @@ export function buildField(sx, sy, lo, hi, bound) {
       }
     }
   }
-  return {g, par, vz, vpad, closed, X, Y, S0, NC, N, tol};
+  setLayer(0);
+  return {g, par, vz, vpad, closed, X, Y, lay, S0, NC, N, tol, sl};
 }
-export function getField(sx, sy, lo, hi, bound) {
-  if (ZONES && ZONES.inside) return buildField(sx, sy, lo, hi, bound);   // small, and new every pointer move
-  const key = `${NAVVER}|${NAV_R}|${ZONES ? ZONES.key : ""}|${sx}|${sy}|${lo}|${hi}|${bound}`;
+export function getField(sx, sy, lo, hi, bound, sl = 0) {
+  if (ZONES && ZONES.inside) return buildField(sx, sy, lo, hi, bound, sl);   // small, and new every pointer move
+  const key = `${NAVVER}|${NAV_R}|${ZONES ? ZONES.key : ""}|${sx}|${sy}|${sl}|${lo}|${hi}|${bound}`;
   let F = FIELDS.get(key);
-  if (!F) { if (FIELDS.size >= 6) FIELDS.clear(); F = buildField(sx, sy, lo, hi, bound); FIELDS.set(key, F); }
+  if (!F) { if (FIELDS.size >= 6) FIELDS.clear(); F = buildField(sx, sy, lo, hi, bound, sl); FIELDS.set(key, F); }
   return F;
 }
+// the route to node k: [[x, y, climbZ, padInches, layer], ...]
 export function fieldPath(F, k) {
   const rev = [];
   for (let u = k, n = 0; n < 100000; n++) {
-    rev.push([F.X(u), F.Y(u), F.vz[u], F.vpad[u]]);
+    rev.push([F.X(u), F.Y(u), F.vz[u], F.vpad[u], F.lay(u)]);
     if (u === F.S0) break;
     u = F.par[u];
   }
-  rev.reverse(); rev[0] = [F.X(F.S0), F.Y(F.S0), 0, 0];
+  rev.reverse(); rev[0] = [F.X(F.S0), F.Y(F.S0), 0, 0, F.sl];
   return rev;
 }
 // pull the route taut: skip any walking points a straight run can cut past; climbs stay put
@@ -246,10 +351,12 @@ export function smoothPath(p, tol) {
     if (p[i + 1][2]) { out.push(p[i + 1]); i++; continue; }
     let lim = i + 1; while (lim + 1 < p.length && !p[lim + 1][2]) lim++;
     let j = i + 1;
+    setLayer(p[i][4] || 0);
     for (let k = lim; k > i + 1; k--)
       if (segFree(p[i][0], p[i][1], p[k][0], p[k][1], i === 0 ? tol : 0)) { j = k; break; }
     out.push(p[j]); i = j;
   }
+  setLayer(0);
   return out;
 }
 // Increments: under Kill Team a straight leg of length L costs ceil(L) inches (the ruleset's
@@ -276,14 +383,15 @@ export function optimizeIncrements(p, tol, lo, hi) {
   if (n <= 2) return p;
   const sec = [], firstOf = [];          // walking sections between climbs
   for (let i = 0, s = 0; i < n; i++) { if (i > 0 && p[i][2]) { s++; firstOf[s] = i; } sec.push(s); }
-  const cand = p.map((q, i) => ({x: q[0], y: q[1], key: i, sec: sec[i], v: i}));
+  const lay = q => q[4] || 0;
+  const cand = p.map((q, i) => ({x: q[0], y: q[1], key: i, sec: sec[i], v: i, l: lay(q)}));
   for (let i = 0; i < n - 1; i++) {
     if (p[i + 1][2]) continue;
     for (let j = i + 2; j < Math.min(n - 1, i + 7); j++) {
       if (p[j + 1][2] || sec[j] !== sec[i] || p[j][2]) break;
       const X = lineMeet(p[i], p[i + 1], p[j], p[j + 1]);
       if (X && X[0] > 0 && X[1] > 0 && X[0] < BW && X[1] < BH)
-        cand.push({x: X[0], y: X[1], key: (i + 1 + j) / 2, sec: sec[i], v: -1});
+        cand.push({x: X[0], y: X[1], key: (i + 1 + j) / 2, sec: sec[i], v: -1, l: lay(p[i + 1])});
     }
   }
   cand.sort((a, b) => a.key - b.key || b.v - a.v);
@@ -300,12 +408,25 @@ export function optimizeIncrements(p, tol, lo, hi) {
       const L = dist(A.x, A.y, B.x, B.y);
       let c, z = 0, pad = 0;
       if (B.sec === A.sec) {
+        setLayer(A.l);
         if (!segFree(A.x, A.y, B.x, B.y, A.v === 0 ? tol : 0)) continue;
         c = C[a] + legCost(L);
+      } else if (lay(p[firstOf[B.sec]]) !== lay(p[firstOf[B.sec] - 1])) {
+        // onto or off an upper floor: one straight climb or drop from any point before it
+        // to any point after it that passes the level portals' test
+        const k = firstOf[B.sec];
+        if ((A.v !== k - 1 || B.v !== k) && !levelHopOK(A.x, A.y, A.l, B.x, B.y, B.l)) continue;
+        const up = layerZq(B.l) > layerZq(A.l);
+        z = p[k][2];
+        const base = up ? Math.max(C[a], lo) : C[a];
+        pad = base - C[a];
+        c = base + legCost(L) + (up ? climbUp(z) : climbDown(z));
+        if (up && c > hi + 1e-9) continue;
       } else {
         const k = firstOf[B.sec], orig = dist(p[k - 1][0], p[k - 1][1], p[k][0], p[k][1]);
         if (L > orig + 2.5) continue;
         z = crossingHeight(A.x, A.y, B.x, B.y);
+        setLayer(0);                     // climbs over terrain are on the table
         if (!isFinite(z) || z <= 0 || !zoneSegFree(A.x, A.y, B.x, B.y)) continue;
         const base = Math.max(C[a], lo);
         pad = base - C[a];
@@ -316,43 +437,48 @@ export function optimizeIncrements(p, tol, lo, hi) {
       if (c < C[b] - 1e-9 || (c < C[b] + 1e-9 && lx < Lx[b] - 1e-9)) { C[b] = c; Lx[b] = lx; prev[b] = a; vz[b] = z; vp[b] = pad; }
     }
   }
+  setLayer(0);
   const end = cand.findIndex(c => c.v === n - 1);
   if (end < 0 || !isFinite(C[end])) return p;
   const out = [];
-  for (let u = end; u >= 0; u = prev[u]) out.push([cand[u].x, cand[u].y, vz[u], vp[u]]);
+  for (let u = end; u >= 0; u = prev[u]) out.push([cand[u].x, cand[u].y, vz[u], vp[u], cand[u].l]);
   out.reverse();
   return pathTotalInches(out) <= pathTotalInches(p) ? out : p;
 }
-// The field's cheapest connection to (gx, gy): among closed cells near it, the cheapest with
-// a free straight run to it. {c: cost, k: cell}, k = -1 if none.
-export function reachField(F, gx, gy) {
-  const ci = Math.floor(gx / GRES), cj = Math.floor(gy / GRES);
-  for (const r of [0.35, 0.9, 1.7]) {
-    const ri = Math.ceil(r / GRES), cand = [];
-    for (let j = Math.max(0, cj - ri); j <= Math.min(G.ny - 1, cj + ri); j++)
-      for (let i = Math.max(0, ci - ri); i <= Math.min(G.nx - 1, ci + ri); i++) {
-        const k = j * G.nx + i;
-        if (!F.closed[k]) continue;
-        const x = (i + 0.5) * GRES, y = (j + 0.5) * GRES, d = dist(x, y, gx, gy);
-        if (d <= r) cand.push([F.g[k] + d, k, x, y]);
-      }
-    cand.sort((a, b) => a[0] - b[0]);
-    for (const [c, k, x, y] of cand) if (segFree(x, y, gx, gy)) return {c, k};
-  }
-  return {c: Infinity, k: -1};
+// The field's cheapest connection to (gx, gy) on layer gl: among closed cells of that layer
+// near it, the cheapest with a free straight run to it. {c: cost, k: cell}, k = -1 if none.
+export function reachField(F, gx, gy, gl = 0) {
+  const B = layerBox(gl), off = LOFF[gl], ci = Math.floor(gx / GRES) - B.i0, cj = Math.floor(gy / GRES) - B.j0;
+  return onLayer(gl, () => {
+    for (const r of [0.35, 0.9, 1.7]) {
+      const ri = Math.ceil(r / GRES), cand = [];
+      for (let j = Math.max(0, cj - ri); j <= Math.min(B.h - 1, cj + ri); j++)
+        for (let i = Math.max(0, ci - ri); i <= Math.min(B.w - 1, ci + ri); i++) {
+          const k = off + j * B.w + i;
+          if (!F.closed[k]) continue;
+          const x = (B.i0 + i + 0.5) * GRES, y = (B.j0 + j + 0.5) * GRES, d = dist(x, y, gx, gy);
+          if (d <= r) cand.push([F.g[k] + d, k, x, y]);
+        }
+      cand.sort((a, b) => a[0] - b[0]);
+      for (const [c, k, x, y] of cand) if (segFree(x, y, gx, gy)) return {c, k};
+    }
+    return {c: Infinity, k: -1};
+  });
 }
-// Route from the operative to the goal: [[x, y, climbZ, padInches], ...]. cap = the
-// move's whole allowance. If the goal can't be reached at all, the route heads for the
-// reachable spot nearest it and is flagged .partial.
-export function findPath(sx, sy, gx, gy, climbLo, climbHi, cap) {
+// Route from the operative (on layer sl) to the goal (on layer gl): [[x, y, climbZ,
+// padInches, layer], ...]; climbZ is the height of a climb over terrain, or onto or off an
+// upper floor when the layer changes. cap = the move's whole allowance. If the goal can't
+// be reached at all, the route heads for the reachable spot nearest it and is flagged
+// .partial.
+export function findPath(sx, sy, gx, gy, climbLo, climbHi, cap, sl = 0, gl = sl) {
   if (climbLo === undefined) { climbLo = 0; climbHi = Infinity; }
-  const tol = startTol(sx, sy);
-  if (segFree(sx, sy, gx, gy, tol)) return [[sx, sy, 0, 0], [gx, gy, 0, 0]];
-  const F = getField(sx, sy, climbLo, climbHi, cap === undefined ? 80 : cap + 4);
-  const bk = reachField(F, gx, gy).k;
+  const tol = onLayer(sl, () => startTol(sx, sy));
+  if (sl === gl && onLayer(sl, () => segFree(sx, sy, gx, gy, tol))) return [[sx, sy, 0, 0, sl], [gx, gy, 0, 0, gl]];
+  const F = getField(sx, sy, climbLo, climbHi, cap === undefined ? 80 : cap + 4, sl);
+  const bk = reachField(F, gx, gy, gl).k;
   if (bk >= 0) {
     const path = fieldPath(F, bk);
-    path.push([gx, gy, 0, 0]);
+    path.push([gx, gy, 0, 0, gl]);
     return optimizeIncrements(smoothPath(path, tol), tol, climbLo, climbHi);
   }
   const lim = cap === undefined ? Infinity : cap;
@@ -384,36 +510,59 @@ export function straightenIncrements(path) {
     const ux = (bx - ax) / L1, uy = (by - ay) / L1;
     const nx = bx + ux * ext, ny = by + uy * ext;
     if (nx < NAV_R || nx > BW - NAV_R || ny < NAV_R || ny > BH - NAV_R) continue;
-    if (!segFree(ax, ay, nx, ny) || !segFree(nx, ny, cx, cy)) continue;
+    setLayer(path[i][4] || 0);
+    const ok = segFree(ax, ay, nx, ny) && segFree(nx, ny, cx, cy);
+    setLayer(0);
+    if (!ok) continue;
     if (legCost(dist(nx, ny, cx, cy)) > legCost(dist(bx, by, cx, cy))) continue;
     path[i][0] = nx; path[i][1] = ny;
   }
   return path;
 }
-export function pathTotalInches(path) {
-  let total = 0;
+// What each leg of a route costs: [{walk, up, down, pad, cost}, ...], leg i ending at
+// path[i] (entry 0 is empty). A climb over terrain goes up and down its height; onto an
+// upper floor, up; off one, down. With a ruleset `dropFree` (Kill Team: 2"), that much of
+// the drops in one action is free, shared by all of them; path.split (inches) is where a
+// second move action starts and gets its own. Otherwise each drop costs climbDown(h).
+export function legCosts(path) {
+  const out = [{walk: 0, up: 0, down: 0, pad: 0, cost: 0}], free0 = RULES.dropFree, split = path.split;
+  let free = free0, run = 0, second = split === undefined;
   for (let i = 1; i < path.length; i++) {
-    const d = dist(path[i-1][0], path[i-1][1], path[i][0], path[i][1]);
-    total += legCost(d) + climbCost(path[i][2] || 0) + (path[i][3] || 0);
+    if (!second && run >= split - 1e-9) { free = free0; second = true; }
+    const a = path[i - 1], b = path[i], z = b[2] || 0, pad = b[3] || 0, la = a[4] || 0, lb = b[4] || 0;
+    const walk = legCost(dist(a[0], a[1], b[0], b[1]));
+    const rise = !z ? 0 : la === lb || layerZq(lb) > layerZq(la) ? z : 0;
+    const fall = !z ? 0 : la === lb || layerZq(lb) < layerZq(la) ? z : 0;
+    let down = 0;
+    if (fall) {
+      if (free0 === undefined) down = climbDown(fall);
+      else { const f = Math.min(free, fall); down = fall - f; free -= f; }
+    }
+    const up = rise ? climbUp(rise) : 0, c = {walk, up, down, pad, rise, fall, cost: walk + up + down + pad};
+    run += c.cost; out.push(c);
   }
-  return total;
+  return out;
+}
+export function pathTotalInches(path) {
+  return legCosts(path).reduce((t, c) => t + c.cost, 0);
 }
 // Truncate a path at a rounded-inch cap. Each whole leg costs ceil(len); a partial
 // final leg may use exactly the remaining whole inches. Returns {path, total, clamped}.
 export function clampPath(path, cap) {
-  const out = [path[0]];
+  const out = [path[0]], lc = legCosts(path);
+  out.split = path.split;
   let rounded = 0, clamped = false;
   for (let i = 1; i < path.length; i++) {
     const [x1, y1] = path[i-1], [x2, y2] = path[i];
-    const z = path[i][2] || 0, pad = path[i][3] || 0;
+    const z = path[i][2] || 0, pad = path[i][3] || 0, l = path[i][4] || 0;
     const L = dist(x1, y1, x2, y2);
-    const c = legCost(L) + climbCost(z) + pad;
-    if (rounded + c <= cap) { out.push([x2, y2, z, pad]); rounded += c; continue; }
-    if (!z) { // a walk leg can be partially used; a climb is all-or-nothing
+    const c = lc[i].cost;
+    if (rounded + c <= cap) { out.push([x2, y2, z, pad, l]); rounded += c; continue; }
+    if (!z) { // a walk leg can be partially used; a climb or drop is all-or-nothing
       const allowed = cap - rounded;
       if (allowed > 1e-9 && L > 0) {
         const t = Math.min(1, allowed / L);
-        out.push([x1 + (x2-x1)*t, y1 + (y2-y1)*t, 0, 0]);
+        out.push([x1 + (x2-x1)*t, y1 + (y2-y1)*t, 0, 0, l]);
         rounded += allowed;
       }
     }
@@ -424,15 +573,20 @@ export function clampPath(path, cap) {
 }
 // Chop a route into the actual movement increments: straight steps of at most 1",
 // direction changes only between steps. A final sub-inch step still costs a full inch.
+// Every step says the heights it starts and ends at (z1, z2: 0 = the table).
 export function chopIncrements(path) {
-  const steps = [];
+  const steps = [], lc = legCosts(path);
   for (let i = 1; i < path.length; i++) {
     const [x1, y1] = path[i-1], [x2, y2] = path[i];
-    const z = path[i][2] || 0, pad = path[i][3] || 0;
+    const z = path[i][2] || 0, pad = path[i][3] || 0, l1 = path[i-1][4] || 0, l2 = path[i][4] || 0;
+    const z1 = layerZ(l1), z2 = layerZ(l2);
     const L = dist(x1, y1, x2, y2);
     if (L < 1e-9 && !z) continue;
-    if (z) { // climb up and over: one indivisible step costing across + up + down (+ any burned wait)
-      steps.push({x1, y1, x2, y2, climb: z, pad, cost: legCost(L) + climbCost(z) + pad});
+    if (z) { // a climb (up and over, or onto a floor) or a drop: one indivisible step costing across + up + down (+ any burned wait)
+      const c = lc[i];
+      steps.push({x1, y1, x2, y2, z1, z2, climb: z, kind: l1 === l2 ? "over" : z2 > z1 ? "up" : "drop",
+                  up: c.up, down: c.down, rise: c.rise, fall: c.fall, level: l1 === l2 ? null : LEVELS[Math.max(l1, l2) - 1],
+                  pad, cost: c.cost});
       continue;
     }
     // steps of the ruleset's increment; measured-exactly rules are drawn in 1" ticks
@@ -445,7 +599,7 @@ export function chopIncrements(path) {
       const end = Math.min((k+1) * step, L);
       const ex = k === n-1 ? x2 : x1 + ux*end, ey = k === n-1 ? y2 : y1 + uy*end;
       const len = end - k * step;
-      steps.push({x1:sx, y1:sy, x2:ex, y2:ey, partial: inc > 0 && len < step - 1e-6, cost: inc > 0 ? step : len});
+      steps.push({x1:sx, y1:sy, x2:ex, y2:ey, z1, z2, partial: inc > 0 && len < step - 1e-6, cost: inc > 0 ? step : len});
       sx = ex; sy = ey;
     }
   }
@@ -462,9 +616,10 @@ function withZones(z, fn) {
   const prev = ZONES; setZones(z);
   try { return fn(); } finally { setZones(prev); }
 }
-const zoneKey = out => out.map(z => `${z.x},${z.y},${z.r}`).join(";");
+const zoneKey = out => out.map(z => `${z.x},${z.y},${z.r},${z.l}`).join(";");
 // the zones for the part of a Charge that has to stay within control range of enemy T
-const insideOf = T => ({out: [], inside: {x: T.x, y: T.y, rIn: opR(T), rOut: opR(T) + CTRL}});
+// (on T's layer: a Charge doesn't climb or drop once it's in)
+const insideOf = T => ({out: [], inside: {x: T.x, y: T.y, rIn: opR(T), rOut: opR(T) + CTRL, l: opLayer(T)}});
 // drop the joint between two straight legs that line up (a charge straight in)
 function mergeStraight(p, j) {
   if (j <= 0 || j >= p.length - 1 || p[j][2] || p[j + 1][2] || p[j][3] || p[j + 1][3]) return p;
@@ -473,37 +628,39 @@ function mergeStraight(p, j) {
   return p.slice(0, j).concat(p.slice(j + 1));
 }
 // findPath, then straightenIncrements, under zones z
-const routeIn = (z, sx, sy, gx, gy, lo, hi, cap) => withZones(z, () => {
-  const p = findPath(sx, sy, gx, gy, lo, hi, cap);
+const routeIn = (z, sx, sy, gx, gy, lo, hi, cap, sl, gl) => withZones(z, () => {
+  const p = findPath(sx, sy, gx, gy, lo, hi, cap, sl, gl);
   return p && straightenIncrements(p);
 });
-// Route `op` (from where it stands, with the nav radius set by useBase) to (gx, gy) under
-// the control range rules, increments straightened; arguments as findPath. charge = the
-// move is a Charge.
-export function planRoute(op, gx, gy, lo, hi, cap, charge) {
-  const sx = op.x, sy = op.y, R = NAV_R;
-  if (!RULES.moves.charge) return routeIn(null, sx, sy, gx, gy, lo, hi, cap);   // no Charge (Infinity): base contact is a move
+// Route `op` (from where it stands, with the nav radius set by useBase) to (gx, gy) on
+// layer gl (default: the one it stands on) under the control range rules, increments
+// straightened; arguments as findPath. charge = the move is a Charge. Control ranges
+// are kept per layer: an enemy on an upper floor doesn't fence off the table beneath it.
+export function planRoute(op, gx, gy, lo, hi, cap, charge, gl) {
+  const sx = op.x, sy = op.y, R = NAV_R, sl = opLayer(op);
+  if (gl === undefined) gl = sl;
+  if (!RULES.moves.charge) return routeIn(null, sx, sy, gx, gy, lo, hi, cap, sl, gl);   // no Charge (Infinity): base contact is a move
   const foes = OPS.filter(o => o.alive && o.team !== op.team && o.id !== op.id);
   const reach = o => R + opR(o) + CTRL;                           // centre distance of "within control range"
-  const within = (o, x, y) => dist(x, y, o.x, o.y) <= reach(o) + 1e-9;
-  const startIn = foes.filter(o => within(o, sx, sy));
+  const within = (o, x, y, l) => opLayer(o) === l && dist(x, y, o.x, o.y) <= reach(o) + 1e-9;
+  const startIn = foes.filter(o => within(o, sx, sy, sl));
   if (charge && startIn.length) {
-    const T = startIn.find(o => within(o, gx, gy)) || startIn[0];
-    return routeIn(insideOf(T), sx, sy, gx, gy, lo, hi, cap);
+    const T = startIn.find(o => within(o, gx, gy, gl)) || startIn[0];
+    return routeIn(insideOf(T), sx, sy, gx, gy, lo, hi, cap, sl, gl);
   }
-  const outList = foes.filter(o => !startIn.includes(o)).map(o => ({x: o.x, y: o.y, r: opR(o) + CTRL}));
+  const outList = foes.filter(o => !startIn.includes(o)).map(o => ({x: o.x, y: o.y, r: opR(o) + CTRL, l: opLayer(o)}));
   const A = {out: outList, inside: null, key: zoneKey(outList)};
-  const direct = routeIn(A, sx, sy, gx, gy, lo, hi, cap);
-  const targets = charge ? foes.filter(o => !startIn.includes(o) && within(o, gx, gy)) : [];
+  const direct = routeIn(A, sx, sy, gx, gy, lo, hi, cap, sl, gl);
+  const targets = charge ? foes.filter(o => !startIn.includes(o) && within(o, gx, gy, gl)) : [];
   if (!targets.length) return direct;
   // Charge: walk (clear of every zone) to a point on the target's control range, then
   // within it to the goal. Entry points: round the zone, plus where the straight line in
   // crosses it; ranked by the two route fields, the best few routed for real.
   const bound = cap === undefined ? 80 : cap + 4;
-  const FA = withZones(A, () => getField(sx, sy, lo, hi, bound));
+  const FA = withZones(A, () => getField(sx, sy, lo, hi, bound, sl));
   const cands = [];
   for (const T of targets) {
-    const rho = reach(T), pts = [];
+    const rho = reach(T), pts = [], tl = opLayer(T);
     for (let a = 0; a < 48; a++) pts.push([T.x + rho * Math.cos(a * Math.PI / 24), T.y + rho * Math.sin(a * Math.PI / 24)]);
     const dx = gx - sx, dy = gy - sy, fx = sx - T.x, fy = sy - T.y, qa = dx * dx + dy * dy, qb = 2 * (fx * dx + fy * dy);
     const disc = qb * qb - 4 * qa * (fx * fx + fy * fy - rho * rho);
@@ -512,22 +669,22 @@ export function planRoute(op, gx, gy, lo, hi, cap, charge) {
       if (t > 0 && t < 1) pts.push([sx + t * dx, sy + t * dy]);
     }
     const B = insideOf(T);
-    const FB = withZones(B, () => getField(gx, gy, 0, hi, bound));
+    const FB = withZones(B, () => getField(gx, gy, 0, hi, bound, gl));
     for (const [x, y] of pts) {
       if (x < R || y < R || x > BW - R || y > BH - R) continue;
-      const ca = withZones(A, () => ptFree(x, y) ? reachField(FA, x, y).c : Infinity);
+      const ca = withZones(A, () => onLayer(tl, () => ptFree(x, y)) ? reachField(FA, x, y, tl).c : Infinity);
       if (!isFinite(ca) || ca > bound) continue;
-      const cb = withZones(B, () => ptFree(x, y) ? reachField(FB, x, y).c : Infinity);
-      if (isFinite(cb)) cands.push({T, x, y, c: ca + cb});
+      const cb = withZones(B, () => onLayer(tl, () => ptFree(x, y)) ? reachField(FB, x, y, tl).c : Infinity);
+      if (isFinite(cb)) cands.push({T, x, y, tl, c: ca + cb});
     }
   }
   cands.sort((a, b) => a.c - b.c);
   let best = null;
-  for (const {T, x, y} of cands.slice(0, 3)) {
-    const pa = routeIn(A, sx, sy, x, y, lo, hi, cap);
+  for (const {T, x, y, tl} of cands.slice(0, 3)) {
+    const pa = routeIn(A, sx, sy, x, y, lo, hi, cap, sl, tl);
     if (!pa || pa.partial) continue;
     const ta = pathTotalInches(pa);
-    const pb = routeIn(insideOf(T), x, y, gx, gy, Math.max(0, lo - ta), hi - ta, cap === undefined ? undefined : cap - ta);
+    const pb = routeIn(insideOf(T), x, y, gx, gy, Math.max(0, lo - ta), hi - ta, cap === undefined ? undefined : cap - ta, tl, gl);
     if (!pb) continue;
     const p = mergeStraight(pa.concat(pb.slice(1)), pa.length - 1);
     if (pb.partial) p.partial = true;

@@ -19,17 +19,20 @@ async function place(page, id, x, y) {
 const to2D = page => page.locator('#view2d').click();
 // board inches -> screen pixels on the 3D table (z = height above the table)
 const toScreen3D = (page, x, y, z = 0) => page.evaluate(([x, y, z]) => skirmishtable.table3d.boardToScreen(x, y, z), [x, y, z]);
-async function drag(page, from, to, in3D = false) {
-  const a = in3D ? await toScreen3D(page, from[0], from[1], 0.7) : await toScreen(page, ...from);
-  const b = in3D ? await toScreen3D(page, to[0], to[1], 0) : await toScreen(page, ...to);
+// opts: fromZ / toZ = heights on the 3D table (an upper floor), shift = hold Shift (2D: aim for the floor)
+async function drag(page, from, to, in3D = false, { fromZ = 0, toZ = 0, shift = false } = {}) {
+  const a = in3D ? await toScreen3D(page, from[0], from[1], fromZ + 0.7) : await toScreen(page, ...from);
+  const b = in3D ? await toScreen3D(page, to[0], to[1], toZ) : await toScreen(page, ...to);
+  if (shift) await page.keyboard.down('Shift');
   await page.mouse.move(a.x, a.y); await page.mouse.down();
   for (let i = 1; i <= 10; i++) await page.mouse.move(a.x + (b.x - a.x) * i / 10, a.y + (b.y - a.y) * i / 10);
   const during = await kz(page, () => {
     const d = skirmishtable.state.drag;
-    return { total: d.total, climbs: d.path.filter(p => p[2]).map(p => p[2]), label: [...document.querySelectorAll('#board text')].map(t => t.textContent),
+    return { total: d.total, climbs: d.path.filter(p => p[2]).map(p => p[2]), goalZ: d.goalZ, label: [...document.querySelectorAll('#board text')].map(t => t.textContent),
              overlay3D: skirmishtable.table3d.three ? skirmishtable.table3d.three.overlayGroup.children.length : 0 };
   });
   await page.mouse.up();
+  if (shift) await page.keyboard.up('Shift');
   return during;
 }
 
@@ -79,6 +82,31 @@ test('climbs over the low wall into the stronghold and labels the climb', async 
   expect(during.climbs).toEqual([2]);
   expect(during.label.some(t => t.includes('▲2″ up'))).toBe(true);
   await expect(page.locator('#log p').first()).toContainText('climbing over 2" terrain');
+});
+
+test('climbs onto an upper floor (Shift on the 2D map), then drops off it in a Dash', async ({ page }) => {
+  await to2D(page);
+  await place(page, 'A2', 10.5, 17.55);
+  const up = await drag(page, [10.5, 17.55], [11.15, 17.55], false, { shift: true });
+  expect(up.goalZ).toBe(3);
+  expect(up.total).toBe(4);                      // 1" across + 3" up
+  expect(up.label.some(t => t.includes('▲3″ up onto the floor'))).toBe(true);
+  expect(await kz(page, () => skirmishtable.world.OPS.find(o => o.id === 'A2').z)).toBe(3);
+  await expect(page.locator('#log p').first()).toContainText("onto Large ruin 1's upper floor");
+  const down = await drag(page, [11.15, 17.55], [10.3, 17.55]);   // the Dash: 1" across + 1" of the 3" drop
+  expect(down.total).toBe(2);
+  expect(down.goalZ).toBe(0);
+  expect(down.label.some(t => t.includes('▼ drop 3″ (1″ counted)'))).toBe(true);
+  expect(await kz(page, () => skirmishtable.world.OPS.find(o => o.id === 'A2').z)).toBe(0);
+  await expect(page.locator('#log p').first()).toContainText('dashes');
+});
+
+test('on the 3D table, pointing at an upper floor climbs onto it', async ({ page }) => {
+  await place(page, 'A2', 10.5, 17.55);
+  const up = await drag(page, [10.5, 17.55], [12.35, 18.35], true, { toZ: 3 });
+  expect(up.goalZ).toBe(3);
+  expect(up.overlay3D).toBeGreaterThan(3);
+  expect(await kz(page, () => skirmishtable.world.OPS.find(o => o.id === 'A2').z)).toBe(3);
 });
 
 test('judges a nooked target as in cover', async ({ page }) => {

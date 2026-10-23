@@ -30,6 +30,92 @@ export function setNavRadius(r) {
   if (r === NAV_R) return;
   NAV_R = r;
   for (let k = 0; k < G.n; k++) G.free[k] = G.clear[k] >= r - FREE_EPS ? 1 : 0;
+  for (const L of LEVELS) levelFree(L);
+}
+
+/* ---------- upper floors (levels) ----------
+   Each overhead patch (a Volkus upper floor) is a floor an operative can climb onto and
+   stand on. A level is its own walkable layer: its floor cells (the patch, plus wall tops
+   flush with it) and a clearance map over its bounding box, measured to the floor's edge
+   or to a wall that rises above it, so a base fits up there just as it does on the table.
+   Layer 0 is the table; layer l >= 1 is LEVELS[l - 1]. clearAt, ptFree and segFree read
+   the layer in LAYER (set it with setLayer / onLayer). */
+export let LEVELS = [], LAYER = 0;
+export function setLayer(l) { LAYER = l; }
+export function onLayer(l, fn) {
+  const prev = LAYER; LAYER = l;
+  try { return fn(); } finally { LAYER = prev; }
+}
+// a layer's grid window: the whole board for the table, its bounding box for a level
+export const layerBox = l => l ? LEVELS[l - 1] : {i0: 0, j0: 0, w: G.nx, h: G.ny, clear: G.clear, free: G.free};
+export const layerZ = l => l ? LEVELS[l - 1].z : 0;            // standing height, inches
+export const layerZq = l => l ? LEVELS[l - 1].zq : 0;
+// which layer an operative standing at (x, y) with height z is on (0 when none fits)
+export function layerAt(x, y, z) {
+  if (!z) return 0;
+  for (const L of LEVELS) if (Math.abs(L.z - z) < 0.01 && floorAt(L, x, y)) return L.l;
+  return 0;
+}
+export function floorAt(L, x, y) {
+  const i = Math.floor(x / GRES) - L.i0, j = Math.floor(y / GRES) - L.j0;
+  return i >= 0 && j >= 0 && i < L.w && j < L.h && !!L.floor[j * L.w + i];
+}
+function levelFree(L) {
+  for (let k = 0; k < L.w * L.h; k++) L.free[k] = L.clear[k] >= NAV_R - FREE_EPS ? 1 : 0;
+}
+// Find the levels: overhead patches (8-connected, biggest first) at their usual height,
+// flooded out over overhead cells within 1" of it and solid cells whose top is within ½"
+// of it. A patch mostly inside a bigger one's floor joins it.
+export function buildLevels() {
+  LEVELS = [];
+  const {nx, ny, n, cls, zq} = G, seen = new Uint8Array(n), claim = new Int32Array(n), comps = [];
+  for (let k = 0; k < n; k++) if (cls[k] === C_OVER && !seen[k]) {
+    const cells = [k], hist = new Map(); seen[k] = 1;
+    for (let q = 0; q < cells.length; q++) {
+      const u = cells[q], i = u % nx, j = u / nx | 0;
+      hist.set(zq[u], (hist.get(zq[u]) || 0) + 1);
+      for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) {
+        const ii = i + di, jj = j + dj;
+        if (ii < 0 || jj < 0 || ii >= nx || jj >= ny) continue;
+        const v = jj * nx + ii;
+        if (!seen[v] && cls[v] === C_OVER) { seen[v] = 1; cells.push(v); }
+      }
+    }
+    if (cells.length < 80) continue;                         // under a base's area: a beam or a ledge
+    let zf = 0, best = -1;
+    for (const [z, c] of hist) if (c > best) { best = c; zf = z; }
+    comps.push({cells, zf});
+  }
+  comps.sort((a, b) => b.cells.length - a.cells.length);
+  for (const {cells, zf} of comps) {
+    if (cells.filter(k => claim[k]).length > cells.length / 2) continue;
+    const id = LEVELS.length + 1, isFloor = v => !claim[v] &&
+      (cls[v] === C_OVER ? Math.abs(zq[v] - zf) <= 2 : cls[v] >= C_WALL && cls[v] <= C_LIGHT && Math.abs(zq[v] - zf) <= 1);
+    const fl = cells.filter(isFloor);
+    for (const k of fl) claim[k] = id;
+    for (let q = 0; q < fl.length; q++) {
+      const u = fl[q], i = u % nx, j = u / nx | 0;
+      for (const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const ii = i + di, jj = j + dj;
+        if (ii < 0 || jj < 0 || ii >= nx || jj >= ny) continue;
+        const v = jj * nx + ii;
+        if (isFloor(v)) { claim[v] = id; fl.push(v); }
+      }
+    }
+    let i0 = nx, j0 = ny, i1 = 0, j1 = 0;
+    for (const k of fl) { const i = k % nx, j = k / nx | 0; i0 = Math.min(i0, i); i1 = Math.max(i1, i); j0 = Math.min(j0, j); j1 = Math.max(j1, j); }
+    i0--; j0--; i1++; j1++;                                  // a rim of no floor round it
+    const w = i1 - i0 + 1, h = j1 - j0 + 1, floor = new Uint8Array(w * h);
+    for (const k of fl) floor[((k / nx | 0) - j0) * w + (k % nx) - i0] = 1;
+    const clear = clearance(floor, w, h, i0, j0);
+    let top = 0; for (let k = 0; k < w * h; k++) top = Math.max(top, clear[k]);
+    if (top < 0.45) { for (const k of fl) claim[k] = 0; continue; }   // no base fits up there
+    const f = FEATS[G.fid[cells[0]]];
+    const L = {l: id, zq: zf, z: zf / 2, i0, j0, w, h, floor, clear, free: new Uint8Array(w * h),
+               fid: G.fid[cells[0]], name: f ? f.id : "Upper floor", vantage: true};
+    levelFree(L);
+    LEVELS.push(L);
+  }
 }
 // Control range zones (movement.planRoute sets them while a move is routed): `out` discs
 // the base may not come within (centre at least r + NAV_R from it), and at most one
@@ -39,24 +125,28 @@ export let ZONES = null;
 export function setZones(z) { ZONES = z; }
 export function zoneClear(x, y) {
   let c = 1e3;
-  for (const z of ZONES.out) c = Math.min(c, Math.hypot(x - z.x, y - z.y) - z.r);
+  for (const z of ZONES.out) if ((z.l || 0) === LAYER) c = Math.min(c, Math.hypot(x - z.x, y - z.y) - z.r);
   const I = ZONES.inside;
+  if (I && (I.l || 0) !== LAYER) return -1;                    // a Charge stays on its target's layer
   if (I) { const d = Math.hypot(x - I.x, y - I.y); c = Math.min(c, d - I.rIn, I.rOut + 2 * NAV_R - d); }
   return c;
 }
-// G.free with the zones applied (a copy; G.free itself stays terrain-only)
-export function zoneFree() {
-  const {nx, ny} = G, I = ZONES.inside, f = I ? new Uint8Array(G.n) : G.free.slice();
-  const fix = (x0, y0, x1, y1, I) => {
-    const i0 = Math.max(0, Math.floor(x0 / GRES)), i1 = Math.min(nx - 1, Math.floor(x1 / GRES));
-    const j0 = Math.max(0, Math.floor(y0 / GRES)), j1 = Math.min(ny - 1, Math.floor(y1 / GRES));
-    for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
-      const k = j * nx + i;
-      f[k] = G.free[k] && zoneClear((i + 0.5) * GRES, (j + 0.5) * GRES) >= NAV_R - FREE_EPS ? 1 : 0;
-    }
+// layer l's free cells with the zones applied (a copy; the layer's own stay terrain-only)
+export function zoneFree(l = 0) {
+  const B = layerBox(l), {i0: oi, j0: oj, w, h} = B, I = ZONES.inside, f = I ? new Uint8Array(w * h) : B.free.slice();
+  if (I && (I.l || 0) !== l) return f;
+  const fix = (x0, y0, x1, y1) => {
+    const i0 = Math.max(0, Math.floor(x0 / GRES) - oi), i1 = Math.min(w - 1, Math.floor(x1 / GRES) - oi);
+    const j0 = Math.max(0, Math.floor(y0 / GRES) - oj), j1 = Math.min(h - 1, Math.floor(y1 / GRES) - oj);
+    onLayer(l, () => {
+      for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+        const k = j * w + i;
+        f[k] = B.free[k] && zoneClear((oi + i + 0.5) * GRES, (oj + j + 0.5) * GRES) >= NAV_R - FREE_EPS ? 1 : 0;
+      }
+    });
   };
   if (I) { const r = I.rOut + NAV_R; fix(I.x - r, I.y - r, I.x + r, I.y + r); }
-  else for (const z of ZONES.out) { const r = z.r + NAV_R; fix(z.x - r, z.y - r, z.x + r, z.y + r); }
+  else for (const z of ZONES.out) if ((z.l || 0) === l) { const r = z.r + NAV_R; fix(z.x - r, z.y - r, z.x + r, z.y + r); }
   return f;
 }
 // a straight run (a climb's crossing) that keeps to the zones
@@ -195,32 +285,42 @@ export function edt1d(f, d, v, z, len) {
   k = 0;
   for (let q = 0; q < len; q++) { while (z[k + 1] < q) k++; d[q] = (q - v[k]) * (q - v[k]) + f[v[k]]; }
 }
-export function buildClearance() {
-  const {nx, ny, n, cls} = G, INF = 1e10, f = new Float64Array(n);
-  for (let k = 0; k < n; k++) f[k] = cls[k] >= 1 && cls[k] <= 3 ? 0 : INF;
-  const m = Math.max(nx, ny), a = new Float64Array(m), b = new Float64Array(m), v = new Int32Array(m), z = new Float64Array(m + 1);
-  for (let i = 0; i < nx; i++) {
-    for (let j = 0; j < ny; j++) a[j] = f[j * nx + i];
-    edt1d(a, b, v, z, ny);
-    for (let j = 0; j < ny; j++) f[j * nx + i] = b[j];
+// Exact distance (inches) from every cell centre of a w x h window at cell (i0, j0) to the
+// nearest cell that isn't `open`, less half a cell to reach its edge; capped by the
+// board edges.
+export function clearance(open, w, h, i0, j0) {
+  const INF = 1e10, n = w * h, f = new Float64Array(n), out = new Float32Array(n);
+  for (let k = 0; k < n; k++) f[k] = open[k] ? INF : 0;
+  const m = Math.max(w, h), a = new Float64Array(m), b = new Float64Array(m), v = new Int32Array(m), z = new Float64Array(m + 1);
+  for (let i = 0; i < w; i++) {
+    for (let j = 0; j < h; j++) a[j] = f[j * w + i];
+    edt1d(a, b, v, z, h);
+    for (let j = 0; j < h; j++) f[j * w + i] = b[j];
   }
-  for (let j = 0; j < ny; j++) {
-    for (let i = 0; i < nx; i++) a[i] = f[j * nx + i];
-    edt1d(a, b, v, z, nx);
-    for (let i = 0; i < nx; i++) f[j * nx + i] = b[i];
+  for (let j = 0; j < h; j++) {
+    for (let i = 0; i < w; i++) a[i] = f[j * w + i];
+    edt1d(a, b, v, z, w);
+    for (let i = 0; i < w; i++) f[j * w + i] = b[i];
   }
-  for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
-    const k = j * nx + i, x = (i + 0.5) * GRES, y = (j + 0.5) * GRES;
+  for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
+    const k = j * w + i, x = (i0 + i + 0.5) * GRES, y = (j0 + j + 0.5) * GRES;
     const d = f[k] >= INF / 2 ? 1e3 : Math.sqrt(f[k]) * GRES - GRES / 2;
-    G.clear[k] = Math.min(d, x, BW - x, y, BH - y);
-    G.free[k] = G.clear[k] >= BASE_R - FREE_EPS ? 1 : 0;
+    out[k] = Math.min(d, x, BW - x, y, BH - y);
   }
-  NAV_R = BASE_R; ZONES = null;
+  return out;
+}
+export function buildClearance() {
+  const {n, cls} = G, open = new Uint8Array(n);
+  for (let k = 0; k < n; k++) open[k] = cls[k] >= 1 && cls[k] <= 3 ? 0 : 1;
+  G.clear.set(clearance(open, G.nx, G.ny, 0, 0));
+  for (let k = 0; k < n; k++) G.free[k] = G.clear[k] >= BASE_R - FREE_EPS ? 1 : 0;
+  NAV_R = BASE_R; ZONES = null; LAYER = 0; LEVELS = [];
 }
 // clearance at any point: bilinear over cell centres, board edges exact
 export function clearAt(x, y) {
-  const {nx, ny, clear} = G;
-  const u = x / GRES - 0.5, v = y / GRES - 0.5, i = Math.floor(u), j = Math.floor(v), fx = u - i, fy = v - j;
+  const L = LAYER ? LEVELS[LAYER - 1] : null;
+  const oi = L ? L.i0 : 0, oj = L ? L.j0 : 0, nx = L ? L.w : G.nx, ny = L ? L.h : G.ny, clear = L ? L.clear : G.clear;
+  const u = x / GRES - 0.5 - oi, v = y / GRES - 0.5 - oj, i = Math.floor(u), j = Math.floor(v), fx = u - i, fy = v - j;
   const i0 = i < 0 ? 0 : i >= nx ? nx - 1 : i, i1 = i + 1 < 0 ? 0 : i + 1 >= nx ? nx - 1 : i + 1;
   const j0 = j < 0 ? 0 : j >= ny ? ny - 1 : j, j1 = j + 1 < 0 ? 0 : j + 1 >= ny ? ny - 1 : j + 1;
   const val = (clear[j0 * nx + i0] * (1 - fx) + clear[j0 * nx + i1] * fx) * (1 - fy)

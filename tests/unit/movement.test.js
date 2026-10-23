@@ -93,20 +93,28 @@ describe('random routes on every map are legal', () => {
             const raw = mv.findPath(sx, sy, gx, gy, lo, hi, cap);
             if (!raw) continue;
             mv.straightenIncrements(raw);
-            const { path: p, total: t } = mv.clampPath(raw, cap);
+            const { path: p, total: t, clamped } = mv.clampPath(raw, cap);
             expect(t).toBeLessThanOrEqual(cap);
             expect(mv.pathTotalInches(p)).toBe(mv.chopIncrements(p).reduce((a, st) => a + st.cost, 0));
             for (let i = 1; i < p.length; i++) {
-              if (p[i][2]) {
+              const la = p[i - 1][4] || 0, lb = p[i][4] || 0;
+              if (p[i][2] && la !== lb) {                                             // onto or off an upper floor
+                if (grid.layerZ(lb) > grid.layerZ(la)) expect(hi).toBeGreaterThanOrEqual(0);  // a Dash may drop, not climb
+                expect(grid.onLayer(la, () => grid.ptFree(p[i - 1][0], p[i - 1][1]))).toBe(true);
+                expect(grid.onLayer(lb, () => grid.ptFree(p[i][0], p[i][1]))).toBe(true);
+                expect(Math.hypot(p[i][0] - p[i - 1][0], p[i][1] - p[i - 1][1])).toBeLessThanOrEqual(2 * grid.NAV_R + 1 + 1e-9);
+              } else if (p[i][2]) {
                 expect(hi).toBeGreaterThanOrEqual(0);                                   // never climb in a Dash
                 const z = mv.crossingHeight(p[i - 1][0], p[i - 1][1], p[i][0], p[i][1]);
                 expect(Number.isFinite(z) && z > 0).toBe(true);
               } else {
-                expect(grid.segFree(p[i - 1][0], p[i - 1][1], p[i][0], p[i][1], i === 1 ? grid.startTol(sx, sy) : 0)).toBe(true);
+                expect(la).toBe(lb);
+                expect(grid.onLayer(la, () => grid.segFree(p[i - 1][0], p[i - 1][1], p[i][0], p[i][1], i === 1 ? grid.startTol(sx, sy) : 0))).toBe(true);
               }
             }
             const end = p[p.length - 1];
-            expect(grid.ptFree(end[0], end[1])).toBe(true);
+            if (!clamped && !raw.partial) expect(end[4] || 0).toBe(0);                  // asked for the table, ends on it
+            expect(grid.onLayer(end[4] || 0, () => grid.ptFree(end[0], end[1]))).toBe(true);
             checked++;
           }
         }

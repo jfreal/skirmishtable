@@ -152,14 +152,23 @@ These describe Kill Team, the reference ruleset; the others change the numbers a
   plus the distance across. Climbs only happen during a Reposition or Charge, never a Dash. If a
   climb needs it, the planner dashes first and saves the Reposition for the climb. In general the
   planner tries both move orders and only allows climbing during moves the ruleset lets climb.
+- **Dropping** is allowed in any move, Dash included. The free 2" is for the whole action: every
+  drop in one action shares it (the down side of a climb over a wall is a drop too), and a
+  second move action gets its own.
 - **Low scan clutter.** Anything at base height counts as terrain, including rubble lips under
   0.5". The scans' low broken walls are therefore light terrain, and crossing one costs at least
   2". To make sub-1" clutter walk-over, change `local_raster()` in `tools/fine_footprint.py` or
   `zqHeight` / `crossingHeight` in `src/engine`.
 - **Strongholds** have no open ground-floor doorway on the scans, so you get inside by climbing
   a low wall section.
-- **Upper floors** are drawn and you can stand under them. Standing on them (Vantage) isn't
-  modelled yet.
+- **Upper floors** (the strongholds' and large ruins' floors, 2.5" and 3" up) can be stood under
+  or climbed onto. The climb starts with the base edge within 1" of the floor and ends with the
+  whole base on it, all or nothing; walking off an edge is a drop. On the 3D table point at the
+  floor; on the 2D map hold Shift while dragging. Up there an operative is on a Vantage Point
+  (the Accurate bonus and seeing a Concealed target past light cover), it isn't engaged with
+  anyone more than 1" away in 3D, and it only collides with operatives on the same floor. Line
+  of sight is still judged on the table's plan. Ladders (a 1" climb) aren't modelled: the
+  scanned terrain has none.
 - **Other operatives** don't block routes, and players adjudicate control-range rules.
   Charges aren't checked for ending in control range.
 - The battle tray, dice and actions are a light mock. The focus is measuring, terrain and sight.
@@ -268,7 +277,7 @@ offers **Load from Steam**. `npm run build` makes a normal standalone page for a
 
 ## Ideas for next steps
 
-- Vantage: standing on upper floors and fire steps, with the KT24 Vantage cover and obscuring rules.
+- Vantage on fire steps; line of sight from an upper floor over the walls below it.
 - Rulesets: silhouette/model heights for true 3D line of sight (Infinity), zones of control,
   reactive orders, other activation systems; per-ruleset profiles and weapons.
 - The ruler on the 3D table; true 3D line of sight against the models (Infinity silhouettes).

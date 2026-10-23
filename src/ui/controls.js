@@ -40,7 +40,7 @@ export function loadMap(keyOrMap) {
   const deploy = MAP.dropEdge === "long" ? 'long-edge deployment, 3" zones' : 'short-edge deployment, ' + (MAP.dropDepth || 6) + '" zones';
   document.getElementById("mapnote").textContent = MAP.fine
     ? `${MAP.name} · ${BW}"×${BH}" · ${deploy} · ${FEATS.length - 1} terrain pieces, footprints traced from the TTS scans at 0.1" — ` +
-      `bases fit any doorway, alcove or nook they really fit; blue hatch = upper floor you can stand under` +
+      `bases fit any doorway, alcove or nook they really fit; blue hatch = upper floor you can stand under or climb onto (Shift-drag)` +
       (MAP.source ? ` · ${MAP.source}` : "")
     : `${MAP.name} · ${BW}"×${BH}" · ${deploy} · ${walls} wall pieces` +
       (hatches ? ` · ${hatches} hatchways (lighter stubs = open access points)` : "") +
