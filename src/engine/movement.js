@@ -2,8 +2,10 @@
  * Movement: climb rules, climb portals, the Lazy Theta* route field, whole-inch
  * increment optimisation, and the helpers that clamp and chop a route.
  */
+import { CTRL } from '../config.js';
 import { dist, opR } from './geometry.js';
-import { C_LIGHT, C_WALL, FEATS, G, GRES, NAV_R, gridWalk, ptFree, segFree, setNavRadius, startTol, zqHeight } from './grid.js';
+import { C_LIGHT, C_WALL, FEATS, G, GRES, NAV_R, ZONES, gridWalk, ptFree, segFree, setNavRadius, setZones, startTol,
+         zoneFree, zoneSegFree, zqHeight } from './grid.js';
 import { BH, BW, OPS } from './world.js';
 import { RULES, legCost } from '../rules/index.js';
 
@@ -97,13 +99,13 @@ export function findPortals() {
   }
 }
 // free cells near a point that a base can slide to in a straight line
-export function attachCells(x, y, radii, tol) {
+export function attachCells(x, y, radii, tol, free = G.free) {
   for (const r of radii) {
     const out = [], ri = Math.ceil(r / GRES), ci = Math.floor(x / GRES), cj = Math.floor(y / GRES);
     for (let j = Math.max(0, cj - ri); j <= Math.min(G.ny - 1, cj + ri); j++)
       for (let i = Math.max(0, ci - ri); i <= Math.min(G.nx - 1, ci + ri); i++) {
         const k = j * G.nx + i;
-        if (!G.free[k]) continue;
+        if (!free[k]) continue;
         const cx = (i + 0.5) * GRES, cy = (j + 0.5) * GRES;
         if (dist(x, y, cx, cy) <= r && segFree(x, y, cx, cy, tol)) out.push(k);
       }
@@ -157,7 +159,10 @@ export function buildField(sx, sy, lo, hi, bound) {
   const nx = G.nx, ny = G.ny, NC = G.n, S0 = NC, N = NC + 1 + EPX.length;
   const g = new Float64Array(N).fill(Infinity), par = new Int32Array(N).fill(-1);
   const vz = new Uint8Array(N), vpad = new Uint8Array(N), closed = new Uint8Array(N);
-  const tol = startTol(sx, sy), sCells = attachCells(sx, sy, [0.3, 0.9, 1.7], tol), sSet = new Set(sCells);
+  // control range zones (planRoute): their own free cells, and no climb into or across one
+  const free = ZONES ? zoneFree() : G.free;
+  const epOK = ZONES ? PORTALS.map(P => zoneSegFree(P.ax, P.ay, P.bx, P.by)) : null;
+  const tol = startTol(sx, sy), sCells = attachCells(sx, sy, [0.3, 0.9, 1.7], tol, free), sSet = new Set(sCells);
   const X = k => k < NC ? (k % nx + 0.5) * GRES : k === S0 ? sx : EPX[k - NC - 1];
   const Y = k => k < NC ? ((k / nx | 0) + 0.5) * GRES : k === S0 ? sy : EPY[k - NC - 1];
   const nb = [];
@@ -169,14 +174,14 @@ export function buildField(sx, sy, lo, hi, bound) {
         const jj = j + dj; if (jj < 0 || jj >= ny) continue;
         for (let di = -1; di <= 1; di++) {
           const ii = i + di; if ((!di && !dj) || ii < 0 || ii >= nx) continue;
-          const m = jj * nx + ii; if (!G.free[m]) continue;
-          if (di && dj && !G.free[j * nx + ii] && !G.free[jj * nx + i]) continue; // no squeezing through a pinch
+          const m = jj * nx + ii; if (!free[m]) continue;
+          if (di && dj && !free[j * nx + ii] && !free[jj * nx + i]) continue; // no squeezing through a pinch
           nb.push(m);
         }
       }
-      const sp = CELL_SP.get(k); if (sp) for (const s of sp) nb.push(s);
+      const sp = CELL_SP.get(k); if (sp) for (const s of sp) if (!epOK || epOK[(s - NC - 1) >> 1]) nb.push(s);
       if (sSet.has(k)) nb.push(S0);
-    } else for (const m of (k === S0 ? sCells : EP_CELLS[k - NC - 1])) nb.push(m);
+    } else for (const m of (k === S0 ? sCells : EP_CELLS[k - NC - 1])) if (free[m]) nb.push(m);
     return nb;
   };
   const H = new Heap();
@@ -204,7 +209,7 @@ export function buildField(sx, sy, lo, hi, bound) {
     }
     if (k > S0 && hi >= 0) {            // a portal endpoint: climb up and over to its mate
       const e = k - NC - 1, mate = NC + 1 + (e ^ 1), P = PORTALS[e >> 1];
-      if (!closed[mate]) {
+      if (!closed[mate] && (!epOK || epOK[e >> 1])) {
         const base = Math.max(g[k], lo), c = base + P.len + climbCost(P.z);
         if (c <= hi + 1e-9 && c < g[mate] - 1e-9) {
           g[mate] = c; par[mate] = k; vz[mate] = P.z;
@@ -217,7 +222,8 @@ export function buildField(sx, sy, lo, hi, bound) {
   return {g, par, vz, vpad, closed, X, Y, S0, NC, N, tol};
 }
 export function getField(sx, sy, lo, hi, bound) {
-  const key = `${NAVVER}|${NAV_R}|${sx}|${sy}|${lo}|${hi}|${bound}`;
+  if (ZONES && ZONES.inside) return buildField(sx, sy, lo, hi, bound);   // small, and new every pointer move
+  const key = `${NAVVER}|${NAV_R}|${ZONES ? ZONES.key : ""}|${sx}|${sy}|${lo}|${hi}|${bound}`;
   let F = FIELDS.get(key);
   if (!F) { if (FIELDS.size >= 6) FIELDS.clear(); F = buildField(sx, sy, lo, hi, bound); FIELDS.set(key, F); }
   return F;
@@ -300,7 +306,7 @@ export function optimizeIncrements(p, tol, lo, hi) {
         const k = firstOf[B.sec], orig = dist(p[k - 1][0], p[k - 1][1], p[k][0], p[k][1]);
         if (L > orig + 2.5) continue;
         z = crossingHeight(A.x, A.y, B.x, B.y);
-        if (!isFinite(z) || z <= 0) continue;
+        if (!isFinite(z) || z <= 0 || !zoneSegFree(A.x, A.y, B.x, B.y)) continue;
         const base = Math.max(C[a], lo);
         pad = base - C[a];
         c = base + legCost(L) + climbCost(z);
@@ -317,15 +323,9 @@ export function optimizeIncrements(p, tol, lo, hi) {
   out.reverse();
   return pathTotalInches(out) <= pathTotalInches(p) ? out : p;
 }
-// Route from the operative to the goal: [[x, y, climbZ, padInches], ...]. cap = the
-// move's whole allowance. If the goal can't be reached at all, the route heads for the
-// reachable spot nearest it and is flagged .partial.
-export function findPath(sx, sy, gx, gy, climbLo, climbHi, cap) {
-  if (climbLo === undefined) { climbLo = 0; climbHi = Infinity; }
-  const tol = startTol(sx, sy);
-  if (segFree(sx, sy, gx, gy, tol)) return [[sx, sy, 0, 0], [gx, gy, 0, 0]];
-  const F = getField(sx, sy, climbLo, climbHi, cap === undefined ? 80 : cap + 4);
-  let best = Infinity, bk = -1;
+// The field's cheapest connection to (gx, gy): among closed cells near it, the cheapest with
+// a free straight run to it. {c: cost, k: cell}, k = -1 if none.
+export function reachField(F, gx, gy) {
   const ci = Math.floor(gx / GRES), cj = Math.floor(gy / GRES);
   for (const r of [0.35, 0.9, 1.7]) {
     const ri = Math.ceil(r / GRES), cand = [];
@@ -337,9 +337,19 @@ export function findPath(sx, sy, gx, gy, climbLo, climbHi, cap) {
         if (d <= r) cand.push([F.g[k] + d, k, x, y]);
       }
     cand.sort((a, b) => a[0] - b[0]);
-    for (const [c, k, x, y] of cand) if (segFree(x, y, gx, gy)) { best = c; bk = k; break; }
-    if (bk >= 0) break;
+    for (const [c, k, x, y] of cand) if (segFree(x, y, gx, gy)) return {c, k};
   }
+  return {c: Infinity, k: -1};
+}
+// Route from the operative to the goal: [[x, y, climbZ, padInches], ...]. cap = the
+// move's whole allowance. If the goal can't be reached at all, the route heads for the
+// reachable spot nearest it and is flagged .partial.
+export function findPath(sx, sy, gx, gy, climbLo, climbHi, cap) {
+  if (climbLo === undefined) { climbLo = 0; climbHi = Infinity; }
+  const tol = startTol(sx, sy);
+  if (segFree(sx, sy, gx, gy, tol)) return [[sx, sy, 0, 0], [gx, gy, 0, 0]];
+  const F = getField(sx, sy, climbLo, climbHi, cap === undefined ? 80 : cap + 4);
+  const bk = reachField(F, gx, gy).k;
   if (bk >= 0) {
     const path = fieldPath(F, bk);
     path.push([gx, gy, 0, 0]);
@@ -440,4 +450,89 @@ export function chopIncrements(path) {
     }
   }
   return steps;
+}
+
+/* ---------- control range ----------
+   A move can't go within control range of an enemy operative (Kill Team: 1″, base edge to
+   base edge), so every enemy's control range is routed round like terrain. A Charge may
+   go into one, but from then on must stay within it: it can move round that enemy, not
+   back out. A zone the operative starts in is left open (it may walk out of it), or, when
+   charging, is the one it must stay inside. Rules without a Charge (Infinity) skip all this. */
+function withZones(z, fn) {
+  const prev = ZONES; setZones(z);
+  try { return fn(); } finally { setZones(prev); }
+}
+const zoneKey = out => out.map(z => `${z.x},${z.y},${z.r}`).join(";");
+// the zones for the part of a Charge that has to stay within control range of enemy T
+const insideOf = T => ({out: [], inside: {x: T.x, y: T.y, rIn: opR(T), rOut: opR(T) + CTRL}});
+// drop the joint between two straight legs that line up (a charge straight in)
+function mergeStraight(p, j) {
+  if (j <= 0 || j >= p.length - 1 || p[j][2] || p[j + 1][2] || p[j][3] || p[j + 1][3]) return p;
+  const ax = p[j][0] - p[j - 1][0], ay = p[j][1] - p[j - 1][1], bx = p[j + 1][0] - p[j][0], by = p[j + 1][1] - p[j][1];
+  if (Math.abs(ax * by - ay * bx) > 1e-6 * Math.hypot(ax, ay) * Math.hypot(bx, by) || ax * bx + ay * by < 0) return p;
+  return p.slice(0, j).concat(p.slice(j + 1));
+}
+// findPath, then straightenIncrements, under zones z
+const routeIn = (z, sx, sy, gx, gy, lo, hi, cap) => withZones(z, () => {
+  const p = findPath(sx, sy, gx, gy, lo, hi, cap);
+  return p && straightenIncrements(p);
+});
+// Route `op` (from where it stands, with the nav radius set by useBase) to (gx, gy) under
+// the control range rules, increments straightened; arguments as findPath. charge = the
+// move is a Charge.
+export function planRoute(op, gx, gy, lo, hi, cap, charge) {
+  const sx = op.x, sy = op.y, R = NAV_R;
+  if (!RULES.moves.charge) return routeIn(null, sx, sy, gx, gy, lo, hi, cap);   // no Charge (Infinity): base contact is a move
+  const foes = OPS.filter(o => o.alive && o.team !== op.team && o.id !== op.id);
+  const reach = o => R + opR(o) + CTRL;                           // centre distance of "within control range"
+  const within = (o, x, y) => dist(x, y, o.x, o.y) <= reach(o) + 1e-9;
+  const startIn = foes.filter(o => within(o, sx, sy));
+  if (charge && startIn.length) {
+    const T = startIn.find(o => within(o, gx, gy)) || startIn[0];
+    return routeIn(insideOf(T), sx, sy, gx, gy, lo, hi, cap);
+  }
+  const outList = foes.filter(o => !startIn.includes(o)).map(o => ({x: o.x, y: o.y, r: opR(o) + CTRL}));
+  const A = {out: outList, inside: null, key: zoneKey(outList)};
+  const direct = routeIn(A, sx, sy, gx, gy, lo, hi, cap);
+  const targets = charge ? foes.filter(o => !startIn.includes(o) && within(o, gx, gy)) : [];
+  if (!targets.length) return direct;
+  // Charge: walk (clear of every zone) to a point on the target's control range, then
+  // within it to the goal. Entry points: round the zone, plus where the straight line in
+  // crosses it; ranked by the two route fields, the best few routed for real.
+  const bound = cap === undefined ? 80 : cap + 4;
+  const FA = withZones(A, () => getField(sx, sy, lo, hi, bound));
+  const cands = [];
+  for (const T of targets) {
+    const rho = reach(T), pts = [];
+    for (let a = 0; a < 48; a++) pts.push([T.x + rho * Math.cos(a * Math.PI / 24), T.y + rho * Math.sin(a * Math.PI / 24)]);
+    const dx = gx - sx, dy = gy - sy, fx = sx - T.x, fy = sy - T.y, qa = dx * dx + dy * dy, qb = 2 * (fx * dx + fy * dy);
+    const disc = qb * qb - 4 * qa * (fx * fx + fy * fy - rho * rho);
+    if (qa > 1e-12 && disc >= 0) {
+      const t = (-qb - Math.sqrt(disc)) / (2 * qa);
+      if (t > 0 && t < 1) pts.push([sx + t * dx, sy + t * dy]);
+    }
+    const B = insideOf(T);
+    const FB = withZones(B, () => getField(gx, gy, 0, hi, bound));
+    for (const [x, y] of pts) {
+      if (x < R || y < R || x > BW - R || y > BH - R) continue;
+      const ca = withZones(A, () => ptFree(x, y) ? reachField(FA, x, y).c : Infinity);
+      if (!isFinite(ca) || ca > bound) continue;
+      const cb = withZones(B, () => ptFree(x, y) ? reachField(FB, x, y).c : Infinity);
+      if (isFinite(cb)) cands.push({T, x, y, c: ca + cb});
+    }
+  }
+  cands.sort((a, b) => a.c - b.c);
+  let best = null;
+  for (const {T, x, y} of cands.slice(0, 3)) {
+    const pa = routeIn(A, sx, sy, x, y, lo, hi, cap);
+    if (!pa || pa.partial) continue;
+    const ta = pathTotalInches(pa);
+    const pb = routeIn(insideOf(T), x, y, gx, gy, Math.max(0, lo - ta), hi - ta, cap === undefined ? undefined : cap - ta);
+    if (!pb) continue;
+    const p = mergeStraight(pa.concat(pb.slice(1)), pa.length - 1);
+    if (pb.partial) p.partial = true;
+    const tot = pathTotalInches(p);
+    if (!best || (!p.partial && best.p.partial) || (!!p.partial === !!best.p.partial && tot < best.tot - 1e-9)) best = {p, tot};
+  }
+  return best ? best.p : direct;
 }
