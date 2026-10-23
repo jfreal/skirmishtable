@@ -8,6 +8,14 @@ export const OBJ_R = 0.787;          // 40mm objective radius
 export let CTRL = 1.0;               // control range (set by the ruleset)
 export function setBaseRadius(r) { BASE_R = r; }
 export function setControlRange(r) { CTRL = r; }
+// Bases the miniatures stand on (mm). A base measured off a model snaps to the nearest
+// one; a measurement more than 15% off all of them isn't trusted (null).
+export const BASE_SIZES = [28, 32, 40];
+export function snapBase(mm) {
+  if (!(mm > 0)) return null;
+  const s = BASE_SIZES.reduce((a, b) => Math.abs(b - mm) < Math.abs(a - mm) ? b : a);
+  return Math.abs(s - mm) <= 0.15 * s ? s : null;
+}
 
 export const WPN = {
   srgFire:  {name:"Master firearm", type:"R", atk:4, hit:3, dmgN:3, dmgC:4, rules:[]},

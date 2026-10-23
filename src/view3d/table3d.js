@@ -6,11 +6,11 @@
  * rules); dragging empty table orbits the camera.
  */
 import { state } from '../state.js';
-import { BASE_R, CTRL, ENGAGE_COL, OBJ_R, TEAMCOL, TEAMGREY } from '../config.js';
+import { CTRL, ENGAGE_COL, OBJ_R, TEAMCOL, TEAMGREY } from '../config.js';
 import { BH, BW, DECOR, DROPZONES, MAP, OBJECTIVES, OPS, TERRAIN } from '../engine/world.js';
 import { chopIncrements, climbDown, climbUp } from '../engine/movement.js';
 import { RULES, fmtIn } from '../rules/index.js';
-import { MARKER_R, SHOT_COL, dragLabelText, shotEye, shotHit } from '../ui/board.js';
+import { MARKER_R, SHOT_COL, dragLabelText, rangeRings, shotEye, shotHit } from '../ui/board.js';
 import { engagements } from '../engine/engage.js';
 import { opsState, placeMarkerAt } from '../ui/ops.js';
 import { TTS_OPS } from '../data/tts-ops.js';
@@ -18,7 +18,7 @@ import { hint } from '../ui/dom.js';
 import { armDrag, setBoardPicker } from '../ui/input.js';
 import { SHOT_KINDS, shotsFrom } from '../engine/shots.js';
 import { lineBlocked, visibilityPolygon } from '../engine/sight.js';
-import { perimeterPts } from '../engine/geometry.js';
+import { opR, perimeterPts } from '../engine/geometry.js';
 import { addModels, ensureManifest, hasModels, progress, setRedraw, steamBytes, steamRemembered, useSteamSource } from './models.js';
 import { onMinisChange, unitObject } from './units.js';
 
@@ -259,7 +259,7 @@ function sightShade(g, eye) {
   // target, thin = not), the deciding sight line, where it crosses the cover, and a tag
   for (const sh of shotsFrom(eye)) {
     const o = sh.target, hex = parseInt(SHOT_COL[sh.kind].slice(1), 16), valid = SHOT_KINDS[sh.kind].valid;
-    const halo = new THREE.Mesh(torus(BASE_R + 0.22, valid ? 0.08 : 0.035, 40), flatMat(hex, valid ? 1 : 0.75));
+    const halo = new THREE.Mesh(torus(opR(o) + 0.22, valid ? 0.08 : 0.035, 40), flatMat(hex, valid ? 1 : 0.75));
     halo.rotation.x = Math.PI / 2; halo.position.set(o.x, 0.08, o.y);
     g.add(halo);
     if (sh.line) {
@@ -291,7 +291,7 @@ function shotTag(kind) {
 function targetLines(g) {
   const s = state.lastShot.sight, [ax, ay] = s.from, pts = [], cols = [];
   const ok = new THREE.Color(0x5fae4c), bad = new THREE.Color(0xcf4f37);
-  for (const [bx, by] of perimeterPts(state.target, 24, BASE_R - 0.02)) {
+  for (const [bx, by] of perimeterPts(state.target, 24, opR(state.target) - 0.02)) {
     const c = lineBlocked(ax, ay, bx, by) ? bad : ok;
     pts.push(ax, 0.6, ay, bx, 0.6, by); cols.push(c.r, c.g, c.b, c.r, c.g, c.b);
   }
@@ -303,8 +303,8 @@ function targetLines(g) {
 const ENGAGE_HEX = parseInt(ENGAGE_COL.slice(1), 16);
 const TRAIL_HEX = 0xe8822e;   // faint orange: the base's path and its outline per increment
 // the red ring round a model in (or about to be in) engagement range
-function engageRing(g, x, y) {
-  const ring = new THREE.Mesh(torus(BASE_R + 0.34, 0.09, 40), flatMat(ENGAGE_HEX));
+function engageRing(g, x, y, R) {
+  const ring = new THREE.Mesh(torus(R + 0.34, 0.09, 40), flatMat(ENGAGE_HEX));
   ring.rotation.x = Math.PI / 2; ring.position.set(x, 0.1, y);
   ring.userData.engaged = true;
   g.add(ring);
@@ -316,12 +316,12 @@ export function sync3DOverlay() {
   const d = state.drag, eye = shotEye();
   if (eye) sightShade(g, eye);
   if (d && d.active && d.goal) {
-    const lift = 0.07;
+    const lift = 0.07, BR = opR(d.op);
     if (d.path) {
       const colorOf = t => t === "dash" ? 0x8d5fa8 : t === "charge" ? ENGAGE_HEX : 0x2a4f9e;
       // the ground the base sweeps (as wide as the base) and a faint base outline at every
       // increment, as on the 2D map
-      const steps = chopIncrements(d.path), R = BASE_R;
+      const steps = chopIncrements(d.path), R = BR;
       for (const st of steps) {
         if (!st.climb) {
           const L = Math.hypot(st.x2 - st.x1, st.y2 - st.y1);
@@ -360,20 +360,20 @@ export function sync3DOverlay() {
       }
     }
     const team = (TEAMCOL[d.op.team] || "#888888").replace("#", "0x");
-    const ghost = new THREE.Mesh(geo(`ghost ${BASE_R}`, () => new THREE.CylinderGeometry(BASE_R, BASE_R, 1.35, 24)), flatMat(parseInt(team, 16), 0.35));
+    const ghost = new THREE.Mesh(geo(`ghost ${BR}`, () => new THREE.CylinderGeometry(BR, BR, 1.35, 24)), flatMat(parseInt(team, 16), 0.35));
     ghost.position.set(d.goal[0], 0.675, d.goal[1]);
     g.add(ghost);
-    const ring = new THREE.Mesh(torus(BASE_R + 0.08, 0.05, 32), flatMat(d.valid && d.path ? 0xf5e9d8 : 0xcf4f37));
+    const ring = new THREE.Mesh(torus(BR + 0.08, 0.05, 32), flatMat(d.valid && d.path ? 0xf5e9d8 : 0xcf4f37));
     ring.rotation.x = Math.PI / 2; ring.position.set(d.goal[0], 0.06, d.goal[1]);
     g.add(ring);
     // the ghost's engagement range: lights up red, with a ring on every enemy inside it
-    const foes = d.foes || [], hot = foes.length > 0, R = BASE_R + CTRL;
+    const foes = d.foes || [], hot = foes.length > 0, R = BR + CTRL;
     const er = new THREE.Mesh(geo(`range ${R}`, () => new THREE.RingGeometry(R - 0.035, R + 0.035, 96)), rangeMat(hot ? ENGAGE_HEX : 0xf5e9d8, hot ? 0.95 : 0.6));
     er.rotation.x = -Math.PI / 2; er.position.set(d.goal[0], 0.035, d.goal[1]);
     g.add(er);
     if (hot) {
-      engageRing(g, d.goal[0], d.goal[1]);
-      for (const f of foes) engageRing(g, f.x, f.y);
+      engageRing(g, d.goal[0], d.goal[1], BR);
+      for (const f of foes) engageRing(g, f.x, f.y, opR(f));
     }
     const label = cachedText(d.path ? dragLabelText() : "blocked", d.valid && d.path ? "#f5e9d8" : "#ffb4a6", "rgba(20,17,14,0.82)", 0.8);
     label.position.set(d.goal[0], 2.6, d.goal[1]);
@@ -585,7 +585,7 @@ export function sync3DOps() {
   }
   for (const [a, b] of engagements()) {   // engaged pairs: a red ring round both and a line between
     ribbon(g, a.x, a.y, 0.1, b.x, b.y, 0.1, 0.07, ENGAGE_HEX);
-    engageRing(g, a.x, a.y); engageRing(g, b.x, b.y);
+    engageRing(g, a.x, a.y, opR(a)); engageRing(g, b.x, b.y, opR(b));
   }
   for (const op of OPS) {
     if (!op.alive) continue;
@@ -593,8 +593,8 @@ export function sync3DOps() {
     const colHex = parseInt((moved || !op.ready ? TEAMGREY : TEAMCOL)[op.team].replace("#", "0x"), 16);
     // the side's miniature, when it has picked a team: the cylinder stays as the pick target,
     // and a ring in the team colour (grey once spent) marks whose it is
-    const mini = unitObject(op, three.renderer);
-    const body = new THREE.Mesh(geo(`body ${BASE_R}`, () => new THREE.CylinderGeometry(BASE_R, BASE_R, 1.35, 20)),
+    const mini = unitObject(op, three.renderer), BR = opR(op);
+    const body = new THREE.Mesh(geo(`body ${BR}`, () => new THREE.CylinderGeometry(BR, BR, 1.35, 20)),
       bodyMat(colHex, op.ready, !!mini));
     body.position.set(op.x, 0.675, op.y);
     body.castShadow = !mini;
@@ -602,26 +602,32 @@ export function sync3DOps() {
     g.add(body);
     if (mini) {
       g.add(mini);
-      const band = new THREE.Mesh(torus(BASE_R + 0.06, 0.05, 32), flatMat(colHex));
+      const band = new THREE.Mesh(torus(BR + 0.06, 0.05, 32), flatMat(colHex));
       band.rotation.x = Math.PI / 2; band.position.set(op.x, 0.04, op.y);
       g.add(band);
     }
     if (RULES.orders && op.order === "engage") {
-      const ring = new THREE.Mesh(torus(BASE_R + 0.18, 0.07, 28), flatMat(0xff8c2e));
+      const ring = new THREE.Mesh(torus(BR + 0.18, 0.07, 28), flatMat(0xff8c2e));
       ring.rotation.x = Math.PI / 2; ring.position.set(op.x, 0.08, op.y);
       g.add(ring);
     }
     if (state.sel && state.sel.id === op.id) {
-      const sr = new THREE.Mesh(torus(BASE_R + 0.45, 0.05, 32), flatMat(0xf5e9d8));
-      sr.rotation.x = Math.PI / 2; sr.position.set(op.x, 0.05, op.y);
-      g.add(sr);
-      // range rings, measured from the base edge as the rules do: control range (white),
-      // and 2″ (red)
-      for (const [r, col, op_] of [[CTRL, 0xf5e9d8, 0.8], [2, 0xd0442c, 0.75]]) {
-        const R = BASE_R + r;
-        const ring = new THREE.Mesh(geo(`range ${R}`, () => new THREE.RingGeometry(R - 0.035, R + 0.035, 96)), rangeMat(col, op_));
-        ring.rotation.x = -Math.PI / 2; ring.position.set(op.x, 0.03, op.y);
-        g.add(ring);
+      // range rings, measured from the base edge as the rules do (as on the 2D map):
+      // control range (shaded disc, white ring) and 2″ (red), each labelled
+      const disc = new THREE.Mesh(geo(`disc ${BR + CTRL}`, () => new THREE.CircleGeometry(BR + CTRL, 96)), rangeMat(parseInt(TEAMCOL[op.team].slice(1), 16), 0.16));
+      disc.rotation.x = -Math.PI / 2; disc.position.set(op.x, 0.02, op.y);
+      g.add(disc);
+      for (const [r, col] of rangeRings()) {
+        const R = BR + r, hex = parseInt(col.slice(1), 16);
+        // over the sight shade, with a dark edge so the white ring reads on pale ground too
+        for (const [w, c, o, h] of [[0.09, 0x14110e, 0.55, 0.045], [0.045, hex, 1, 0.05]]) {
+          const ring = new THREE.Mesh(geo(`range ${R} ${w}`, () => new THREE.RingGeometry(R - w, R + w, 128)), rangeMat(c, o));
+          ring.rotation.x = -Math.PI / 2; ring.position.set(op.x, h, op.y); ring.renderOrder = 3;
+          g.add(ring);
+        }
+        const tag = cachedText(fmtIn(r) + "″", col, "rgba(20,17,14,0.78)", 0.42);
+        tag.position.set(op.x, 0.25, op.y - R);
+        g.add(tag);
       }
     }
     const label = opLabelSprite(op.id);

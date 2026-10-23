@@ -23,6 +23,14 @@ export const CLS_KIND = ["", "wall", "heavy", "light", "step", "overhead"];
 export const zqHeight = zq => Math.max(1, Math.ceil(zq / 2 - 1e-9)); // half-inch code -> whole climbing inches
 export const FREE_EPS = 1e-6;
 export let G = null, FEATS = [null];
+// The base radius routing works for (G.free, ptFree, segFree): the ruleset's base after
+// buildClearance, the moving operative's own base while a move is planned (useBase).
+export let NAV_R = BASE_R;
+export function setNavRadius(r) {
+  if (r === NAV_R) return;
+  NAV_R = r;
+  for (let k = 0; k < G.n; k++) G.free[k] = G.clear[k] >= r - FREE_EPS ? 1 : 0;
+}
 export function newGrid() {
   const nx = Math.ceil(BW / GRES - 1e-9), ny = Math.ceil(BH / GRES - 1e-9), n = nx * ny;
   G = {nx, ny, n, cls: new Uint8Array(n), zq: new Uint8Array(n), fid: new Int32Array(n),
@@ -172,6 +180,7 @@ export function buildClearance() {
     G.clear[k] = Math.min(d, x, BW - x, y, BH - y);
     G.free[k] = G.clear[k] >= BASE_R - FREE_EPS ? 1 : 0;
   }
+  NAV_R = BASE_R;
 }
 // clearance at any point: bilinear over cell centres, board edges exact
 export function clearAt(x, y) {
@@ -183,14 +192,14 @@ export function clearAt(x, y) {
             + (clear[j1 * nx + i0] * (1 - fx) + clear[j1 * nx + i1] * fx) * fy;
   return Math.min(val, x, BW - x, y, BH - y);
 }
-export function ptFree(x, y) { return clearAt(x, y) >= BASE_R - FREE_EPS; }
+export function ptFree(x, y) { return clearAt(x, y) >= NAV_R - FREE_EPS; }
 // A base sliding along a segment never overlaps blocking terrain. Sphere-traced: the
 // clearance says how far it can safely advance, so open ground costs a handful of
 // lookups. tol lets a base that starts a hair too tight (placed by hand) ease out.
 export function segFree(x1, y1, x2, y2, tol) {
   const L = Math.hypot(x2 - x1, y2 - y1), ux = L > 0 ? (x2 - x1) / L : 0, uy = L > 0 ? (y2 - y1) / L : 0;
   for (let t = 0, n = 0; n < 4000; n++) {
-    let c = clearAt(x1 + ux * t, y1 + uy * t) - BASE_R;
+    let c = clearAt(x1 + ux * t, y1 + uy * t) - NAV_R;
     if (tol && t < 0.35) c += tol * (1 - t / 0.35);
     if (c < -FREE_EPS) return false;
     if (t >= L) return true;
@@ -198,7 +207,7 @@ export function segFree(x1, y1, x2, y2, tol) {
   }
   return false;
 }
-export function startTol(x, y) { const c = clearAt(x, y); return c >= BASE_R - FREE_EPS ? 0 : BASE_R - c + 0.02; }
+export function startTol(x, y) { const c = clearAt(x, y); return c >= NAV_R - FREE_EPS ? 0 : NAV_R - c + 0.02; }
 // Walk the cells a segment passes through (Amanatides & Woo). visit(k, tEnter) returns
 // true to stop; gridWalk then returns true.
 export function gridWalk(x1, y1, x2, y2, visit) {

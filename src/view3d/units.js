@@ -4,10 +4,12 @@
  * Steam Workshop team mods (src/data/tts-teams.js) and a model per operative. Models load
  * from the Steam CDN when picked (the site hosts none) and replace the cylinders; the
  * cylinder stays as the invisible pick target, so dragging works exactly as before.
+ * Each model's base is measured when it loads and becomes its operative's base size.
  */
 import { TTS_TEAMS } from '../data/tts-teams.js';
-import { BASE_R } from '../config.js';
-import { BH, BW } from '../engine/world.js';
+import { snapBase } from '../config.js';
+import { opR } from '../engine/geometry.js';
+import { BH, BW, OPS } from '../engine/world.js';
 import { steamMaterial, steamParts } from './models.js';
 
 const PREF = "skirmishtable.minis";
@@ -18,13 +20,14 @@ const listeners = [];
 export const onMinisChange = fn => listeners.push(fn);
 function changed() {
   try { localStorage.setItem(PREF, JSON.stringify(minis)); } catch (e) {}
-  for (const fn of listeners) fn();
+  notify();
 }
+function notify() { const bases = syncBases(); for (const fn of listeners) fn(bases); }   // bases: an operative's base size changed
 export const teamOf = side => TTS_TEAMS.find(t => t.id === minis.sides[side].team) || null;
 export function setTeam(side, id) { minis.sides[side] = { team: id || null, picks: {} }; changed(); }
 export function setPick(side, opId, index) { minis.sides[side].picks[opId] = index; changed(); }
 // online: the host's picks for both sides (not saved as this browser's own choice)
-export function setMinisSides(sides) { minis.sides = sides; for (const fn of listeners) fn(); }
+export function setMinisSides(sides) { minis.sides = sides; notify(); }
 // the model an operative shows: its pick, else the team's models dealt out in order
 export function modelIndex(op, n) {
   const p = minis.sides[op.team].picks[op.id];
@@ -78,7 +81,9 @@ function template(model) {
     root.updateMatrixWorld(true);
     const all = new THREE.Box3().setFromObject(inner), base = findBase(inner.children, all);
     const foot = base ? base.b : all;
-    root.userData = { diameter: base ? base.w : null, centre: foot.getCenter(new THREE.Vector3()), bottom: all.min.y };
+    // TTS units are inches: the base's diameter in mm, snapped to a real base size
+    const mm = base ? snapBase(base.w * 25.4) : null;
+    root.userData = { diameter: base ? base.w : null, mm, centre: foot.getCenter(new THREE.Vector3()), bottom: all.min.y };
     return root;
   });
 }
@@ -86,28 +91,46 @@ function template(model) {
 let renderer = null;
 const ready = {}, loading = new Set();   // template key -> group, once loaded
 const clones = {};                       // operative id -> its miniature
+const modelOf = op => { const team = teamOf(op.team); return team && team.models.length ? team.models[modelIndex(op, team.models.length)] : null; };
+const keyOf = model => JSON.stringify([model.base, model.parts]);
+function load(model) {
+  // one redraw per model when it lands (redraws call back in here: never pile up waiters)
+  const key = keyOf(model);
+  if (ready[key] || loading.has(key)) return;
+  loading.add(key);
+  template(model).then(t => { ready[key] = t; loading.delete(key); notify(); });
+}
+// Each operative's base (op.base, mm) is its miniature's, once the model has loaded and
+// a base was found on it; plain tokens (no team) use the ruleset's. True if any changed.
+export function syncBases() {
+  if (!window.THREE) return false;
+  let any = false;
+  for (const op of OPS) {
+    const model = modelOf(op);
+    let mm;
+    if (model) {
+      const t = ready[keyOf(model)];
+      if (!t) { load(model); continue; }      // keep the base it has until this one is measured
+      mm = t.userData.mm || undefined;
+    }
+    if (op.base !== mm) { if (mm) op.base = mm; else delete op.base; any = true; }
+  }
+  return any;
+}
 // The miniature for an operative, or null while it loads / when its side has no team.
 export function unitObject(op, r) {
   renderer = r;
-  const team = teamOf(op.team);
-  if (!team || !team.models.length) return null;
-  const model = team.models[modelIndex(op, team.models.length)];
-  const key = JSON.stringify([model.base, model.parts]);
-  if (!ready[key]) {
-    // one redraw per model when it lands (redraws call back in here: never pile up waiters)
-    if (!loading.has(key)) {
-      loading.add(key);
-      template(model).then(t => { ready[key] = t; loading.delete(key); for (const fn of listeners) fn(); });
-    }
-    return null;
-  }
+  const model = modelOf(op);
+  if (!model) return null;
+  const key = keyOf(model);
+  if (!ready[key]) { load(model); return null; }
   // each operative keeps its clone (the table redraws on every change): only the matrix moves
   const t = ready[key];
   let obj = clones[op.id];
   if (!obj || obj.userData.key !== key) { obj = clones[op.id] = t.clone(); obj.userData = { ...t.userData, key }; }
-  // fit the model's base to the ruleset's base (no base: the mod's inches), stand it on the
-  // table, face the centre
-  const k = t.userData.diameter ? 2 * BASE_R / t.userData.diameter : 1;
+  // fit the model's base to the operative's base (no base: the mod's inches), stand it on
+  // the table, face the centre
+  const k = t.userData.diameter ? 2 * opR(op) / t.userData.diameter : 1;
   const yaw = Math.atan2(BW / 2 - op.x, BH / 2 - op.y);   // the scans face +z once mirrored
   obj.matrixAutoUpdate = false;
   obj.matrix.makeTranslation(op.x, 0, op.y)

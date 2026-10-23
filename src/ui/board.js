@@ -2,10 +2,10 @@
  * SVG board rendering: terrain, objectives, operatives, shadows and the move overlay.
  */
 import { state } from '../state.js';
-import { BASE_R, CTRL, ENGAGE_COL, OBJ_R, TEAMCOL, TEAMGREY, TEAMNAME } from '../config.js';
+import { CTRL, ENGAGE_COL, OBJ_R, TEAMCOL, TEAMGREY, TEAMNAME } from '../config.js';
 import { VOLKUS_PIECES } from '../data/volkus-pieces.js';
 import { isInjured } from '../engine/dice.js';
-import { blobPoints, dist, perimeterPts, px, wallSegments } from '../engine/geometry.js';
+import { blobPoints, dist, opR, perimeterPts, px, wallSegments } from '../engine/geometry.js';
 import { chopIncrements, climbDown, climbUp } from '../engine/movement.js';
 import { engagements } from '../engine/engage.js';
 import { SHOT_KINDS, shotsFrom } from '../engine/shots.js';
@@ -186,7 +186,7 @@ function renderObjectives() {
     const contest = [0, 0];
     for (const op of OPS) {
       if (!op.alive) continue;
-      if (dist(op.x, op.y, o.x, o.y) - BASE_R - OBJ_R <= CTRL + 1e-9) contest[op.team] += op.apl;
+      if (dist(op.x, op.y, o.x, o.y) - opR(op) - OBJ_R <= CTRL + 1e-9) contest[op.team] += op.apl;
     }
     const owner = contest[0] > contest[1] ? 0 : contest[1] > contest[0] ? 1 : -1;
     el("circle", {cx:px(o.x), cy:px(o.y), r:px(OBJ_R), fill:"#cbbfa4", stroke:"#8a7c60", "stroke-width":2}, gObj);
@@ -208,10 +208,18 @@ function star4(cx, cy, ro, ri) { // four-pointed spiked star (official engage ic
   return pts.join(" ");
 }
 // the red ring round a model in (or about to be in) engagement range
-function engageRing(parent, x, y) {
-  el("circle", {cx:px(x), cy:px(y), r:px(BASE_R)+12, fill:"none", stroke:ENGAGE_COL, "stroke-width":7, opacity:.25, "pointer-events":"none"}, parent);
-  el("circle", {cx:px(x), cy:px(y), r:px(BASE_R)+12, fill:"none", stroke:ENGAGE_COL, "stroke-width":2.5,
+function engageRing(parent, x, y, R) {
+  el("circle", {cx:px(x), cy:px(y), r:px(R)+12, fill:"none", stroke:ENGAGE_COL, "stroke-width":7, opacity:.25, "pointer-events":"none"}, parent);
+  el("circle", {cx:px(x), cy:px(y), r:px(R)+12, fill:"none", stroke:ENGAGE_COL, "stroke-width":2.5,
     class:"engpulse", "data-engaged":"1", "pointer-events":"none"}, parent);
+}
+// The rings round the selected operative, out from its base edge: control range (white,
+// solid) and the distance inside which terrain gives no cover (Kill Team 2″; red, dashed).
+// [inches, colour, dash]; shared with the 3D table.
+export function rangeRings() {
+  const out = [[CTRL, "#f5e9d8", "none"]], far = RULES.cover ? RULES.cover.voidWithin : 2;
+  if (far > CTRL + 1e-9) out.push([far, "#d0442c", "6 4"]);
+  return out;
 }
 const BASE_TRAIL = "#e8822e";   // faint orange: the base's path and its outline per increment
 function renderOps() {
@@ -230,31 +238,35 @@ function renderOps() {
   for (const [a, b] of engagements()) {
     el("line", {x1:px(a.x), y1:px(a.y), x2:px(b.x), y2:px(b.y), stroke:ENGAGE_COL, "stroke-width":2.5,
       "stroke-dasharray":"5 3", opacity:.8, "pointer-events":"none"}, gOps);
-    for (const o of [a, b]) engageRing(gOps, o.x, o.y);
+    for (const o of [a, b]) engageRing(gOps, o.x, o.y, opR(o));
   }
   for (const op of OPS) {
     if (!op.alive) continue;
     const g = el("g", {"data-oid": op.id, cursor:"pointer", style:"touch-action:none"}, gOps);
+    const R = opR(op);
     // generous invisible hit target so tokens are grabbable on touch screens
-    el("circle", {cx:px(op.x), cy:px(op.y), r:px(BASE_R + 0.5), fill:"rgba(0,0,0,0)"}, g);
+    el("circle", {cx:px(op.x), cy:px(op.y), r:px(R + 0.5), fill:"rgba(0,0,0,0)"}, g);
     if (state.sel && state.sel.id === op.id) {
-      el("circle", {cx:px(op.x), cy:px(op.y), r:px(BASE_R+CTRL), fill:TEAMCOL[op.team], opacity:.10}, g);
-      el("circle", {cx:px(op.x), cy:px(op.y), r:px(BASE_R+CTRL), fill:"none", stroke:TEAMCOL[op.team],
-        "stroke-width":1, "stroke-dasharray":"4 4", opacity:.7}, g);
-      el("circle", {cx:px(op.x), cy:px(op.y), r:px(BASE_R)+7, fill:"none", stroke:"#f5e9d8", "stroke-width":2, opacity:.9}, g);
-      // 2″ (red), as on the 3D table
-      for (const [r, col] of [[2, "#d0442c"]])
-        el("circle", {cx:px(op.x), cy:px(op.y), r:px(BASE_R + r), fill:"none", stroke:col,
-          "stroke-width":1.5, "stroke-dasharray":"6 4", opacity:.75, "pointer-events":"none"}, g);
+      // range rings, measured from the base edge as the rules do (as on the 3D table):
+      // control range (shaded, solid) and the 2″ inside which cover doesn't count (red)
+      el("circle", {cx:px(op.x), cy:px(op.y), r:px(R+CTRL), fill:TEAMCOL[op.team], opacity:.12, "pointer-events":"none"}, g);
+      for (const [r, col, dash] of rangeRings())
+        el("circle", {cx:px(op.x), cy:px(op.y), r:px(R + r), fill:"none", stroke:col, "data-ring": r,
+          "stroke-width":1.5, "stroke-dasharray":dash, opacity:.85, "pointer-events":"none"}, g);
+      for (const [r, col] of rangeRings())
+        el("text", {x:px(op.x), y:px(op.y - R - r) + 11, "text-anchor":"middle", fill:col, stroke:"#14110e",
+          "stroke-width":2.5, "paint-order":"stroke", "font-family":"'JetBrains Mono',monospace", "font-size":9.5,
+          "font-weight":700, "pointer-events":"none"}, g).textContent = fmtIn(r) + "″";
+      el("circle", {cx:px(op.x), cy:px(op.y), r:px(R)+2.5, fill:"none", stroke:"#f5e9d8", "stroke-width":2, opacity:.9}, g);
     }
     const moved = op.used.some(u => u === "reposition" || u === "dash" || u === "charge");
     const fill = moved || !op.ready ? TEAMGREY[op.team] : TEAMCOL[op.team];
     if (RULES.orders && op.order === "engage") { // hot ember glow — active and dangerous (dimmed once expended)
-      const glow = el("circle", {cx:px(op.x), cy:px(op.y), r:px(BASE_R)+11, fill:"url(#hotglow)"}, g);
+      const glow = el("circle", {cx:px(op.x), cy:px(op.y), r:px(R)+11, fill:"url(#hotglow)"}, g);
       if (op.ready) glow.setAttribute("class", "hotpulse");
       else glow.setAttribute("opacity", "0.3");
     }
-    el("circle", {cx:px(op.x), cy:px(op.y), r:px(BASE_R), fill,
+    el("circle", {cx:px(op.x), cy:px(op.y), r:px(R), fill,
       stroke:"#14110e", "stroke-width":1.5, opacity: op.ready ? 1 : 0.55}, g);
     el("text", {x:px(op.x), y:px(op.y)+4, "text-anchor":"middle", fill:"#14110e",
       "font-family":"'Big Shoulders',sans-serif", "font-size":13, "font-weight":800,
@@ -262,7 +274,7 @@ function renderOps() {
     // order token, official style: orange chip with a white icon while ready
     // (spiked star = Engage, dome = Conceal), flipped to its dark face when expended.
     // Rulesets without orders get a plain ready/expended dot.
-    const tx = px(op.x + BASE_R * 0.82), ty = px(op.y - BASE_R * 0.82);
+    const tx = px(op.x + R * 0.82), ty = px(op.y - R * 0.82);
     const tr = 7.5;
     const chip = op.ready ? "#e8722e" : "#332619";
     const icon = op.ready ? "#fff3e4" : "#a97844";
@@ -272,9 +284,9 @@ function renderOps() {
       el("polygon", {points: star4(tx, ty, tr - 1.8, 2.1), fill:icon}, g);
     else
       el("path", {d:`M ${(tx-4.2).toFixed(1)} ${(ty+2.4).toFixed(1)} a 4.2 4.2 0 0 1 8.4 0 z`, fill:icon}, g);
-    if (isInjured(op)) el("circle", {cx:px(op.x-BASE_R*0.8), cy:px(op.y+BASE_R*0.8), r:4, fill:"#d3a04a", stroke:"#14110e", "stroke-width":1}, g);
+    if (isInjured(op)) el("circle", {cx:px(op.x-R*0.8), cy:px(op.y+R*0.8), r:4, fill:"#d3a04a", stroke:"#14110e", "stroke-width":1}, g);
     // wound counter under the token
-    const wt = el("text", {x:px(op.x), y:px(op.y + BASE_R) + 12, "text-anchor":"middle",
+    const wt = el("text", {x:px(op.x), y:px(op.y + R) + 12, "text-anchor":"middle",
       fill: op.wounds <= op.maxW / 4 ? "#e0573f" : isInjured(op) ? "#d3a04a" : "#9fd3a8",
       stroke:"#14110e", "stroke-width":3, "paint-order":"stroke", "font-size":11, "font-weight":700,
       "font-family":"'Big Shoulders',sans-serif", "pointer-events":"none"}, g);
@@ -314,11 +326,12 @@ function renderShadows(eye) {
     }
     const hit = shotHit(sh);
     if (hit) el("circle", {cx:px(hit.at[0]), cy:px(hit.at[1]), r:3.5, fill:col, stroke:"#14110e", "stroke-width":1}, gOverlay);
+    const oR = opR(o);
     if (sh.kind === "clear")
-      el("circle", {cx:px(o.x), cy:px(o.y), r:px(BASE_R)+8, fill:"none", stroke:col, "stroke-width":5, opacity:0.25}, gOverlay);
-    el("circle", {cx:px(o.x), cy:px(o.y), r:px(BASE_R)+4, fill:"none", stroke:col,
+      el("circle", {cx:px(o.x), cy:px(o.y), r:px(oR)+8, fill:"none", stroke:col, "stroke-width":5, opacity:0.25}, gOverlay);
+    el("circle", {cx:px(o.x), cy:px(o.y), r:px(oR)+4, fill:"none", stroke:col,
       "stroke-width": k.valid ? 2.5 : 1.5, "stroke-dasharray": k.valid ? "none" : "4 3", opacity: k.valid ? 1 : 0.8}, gOverlay);
-    el("text", {x:px(o.x), y:px(o.y + BASE_R)+16, "text-anchor":"middle", fill:col, stroke:"#f5efe2", "stroke-width":3,
+    el("text", {x:px(o.x), y:px(o.y + oR)+16, "text-anchor":"middle", fill:col, stroke:"#f5efe2", "stroke-width":3,
       "paint-order":"stroke", "font-family":"'JetBrains Mono',monospace", "font-size":9.5, "font-weight":600,
       "data-shot": sh.kind}, gTags).textContent = k.tag;
   }
@@ -356,6 +369,7 @@ export function renderOverlay(cursor) {
   }
   // drag movement path (auto-routed around terrain, clamped at the combined allowance)
   if (state.drag && state.drag.active && state.drag.goal) {
+    const R = opR(state.drag.op);
     if (state.drag.path) {
       const colorOf = t => t === "dash" ? "#8d5fa8" : t === "charge" ? ENGAGE_COL : "#2a4f9e"; // secondary violet, charge red, main move blue
       const chained = state.drag.total > state.drag.primAllow + 1e-9 && state.drag.p2;
@@ -366,9 +380,9 @@ export function renderOverlay(cursor) {
       const swept = el("g", {opacity:0.9}, gOverlay);
       for (const st of steps) if (!st.climb)
         el("line", {x1:px(st.x1), y1:px(st.y1), x2:px(st.x2), y2:px(st.y2), stroke:BASE_TRAIL,
-          "stroke-width":px(2 * BASE_R), "stroke-linecap":"round", opacity:0.13}, swept);
+          "stroke-width":px(2 * R), "stroke-linecap":"round", opacity:0.13}, swept);
       for (const st of steps)
-        el("circle", {cx:px(st.x2), cy:px(st.y2), r:px(BASE_R), fill:"none", stroke:BASE_TRAIL,
+        el("circle", {cx:px(st.x2), cy:px(st.y2), r:px(R), fill:"none", stroke:BASE_TRAIL,
           "stroke-width":1.2, opacity:0.55, "data-trail":"1"}, swept);
       let inch = 0;
       for (const st of steps) {
@@ -398,16 +412,16 @@ export function renderOverlay(cursor) {
         }
       }
       const col = !state.drag.valid ? "#cf4f37" : chained ? colorOf(state.drag.p2.type) : colorOf(state.drag.p1.type);
-      el("circle", {cx:px(state.drag.goal[0]), cy:px(state.drag.goal[1]), r:px(BASE_R), fill:TEAMCOL[state.drag.op.team],
+      el("circle", {cx:px(state.drag.goal[0]), cy:px(state.drag.goal[1]), r:px(R), fill:TEAMCOL[state.drag.op.team],
         "fill-opacity":0.35, stroke:col, "stroke-width":1.5, "stroke-dasharray":"3 3"}, gOverlay);
       // the ghost's engagement range: lights up red, with a ring on every enemy inside it
       const foes = state.drag.foes || [], hot = foes.length > 0;
-      el("circle", {cx:px(state.drag.goal[0]), cy:px(state.drag.goal[1]), r:px(BASE_R + CTRL), fill: hot ? ENGAGE_COL : "none",
+      el("circle", {cx:px(state.drag.goal[0]), cy:px(state.drag.goal[1]), r:px(R + CTRL), fill: hot ? ENGAGE_COL : "none",
         "fill-opacity":0.12, stroke: hot ? ENGAGE_COL : "#f5e9d8", "stroke-width": hot ? 2 : 1.2,
         "stroke-dasharray": hot ? "none" : "4 3", opacity: hot ? 0.95 : 0.8}, gOverlay);
       if (hot) {
-        engageRing(gOverlay, state.drag.goal[0], state.drag.goal[1]);
-        for (const f of foes) engageRing(gOverlay, f.x, f.y);
+        engageRing(gOverlay, state.drag.goal[0], state.drag.goal[1], R);
+        for (const f of foes) engageRing(gOverlay, f.x, f.y, opR(f));
       }
       const lbl = el("text", {x:px(state.drag.goal[0])+16, y:px(state.drag.goal[1])-12, fill:col,
         "font-family":"'JetBrains Mono',monospace", "font-size":13, "font-weight":600}, gOverlay);
@@ -415,7 +429,7 @@ export function renderOverlay(cursor) {
     } else {
       el("line", {x1:px(state.drag.sx), y1:px(state.drag.sy), x2:px(state.drag.goal[0]), y2:px(state.drag.goal[1]),
         stroke:"#cf4f37", "stroke-width":2, "stroke-dasharray":"6 4"}, gOverlay);
-      el("circle", {cx:px(state.drag.goal[0]), cy:px(state.drag.goal[1]), r:px(BASE_R), fill:"none",
+      el("circle", {cx:px(state.drag.goal[0]), cy:px(state.drag.goal[1]), r:px(R), fill:"none",
         stroke:"#cf4f37", "stroke-width":1.5, "stroke-dasharray":"3 3"}, gOverlay);
       el("text", {x:px(state.drag.goal[0])+16, y:px(state.drag.goal[1])-12, fill:"#cf4f37",
         "font-family":"'JetBrains Mono',monospace", "font-size":13, "font-weight":600}, gOverlay)
@@ -425,7 +439,7 @@ export function renderOverlay(cursor) {
   // sight lines
   if (state.lastShot && state.sel && state.target && state.target.alive) {
     const s = state.lastShot.sight;
-    const bPts = perimeterPts(state.target, 24, BASE_R - 0.02);
+    const bPts = perimeterPts(state.target, 24, opR(state.target) - 0.02);
     const [ax, ay] = s.from;
     for (const [bx, by] of bPts) {
       const blocked = lineBlocked(ax, ay, bx, by);

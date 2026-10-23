@@ -2,16 +2,17 @@
  * Movement: climb rules, climb portals, the Lazy Theta* route field, whole-inch
  * increment optimisation, and the helpers that clamp and chop a route.
  */
-import { BASE_R } from '../config.js';
-import { dist } from './geometry.js';
-import { C_LIGHT, C_WALL, FEATS, G, GRES, gridWalk, ptFree, segFree, startTol, zqHeight } from './grid.js';
+import { dist, opR } from './geometry.js';
+import { C_LIGHT, C_WALL, FEATS, G, GRES, NAV_R, gridWalk, ptFree, segFree, setNavRadius, startTol, zqHeight } from './grid.js';
 import { BH, BW, OPS } from './world.js';
 import { RULES, legCost } from '../rules/index.js';
 
+// what stops a base (the nav radius: see useBase) landing at (x, y)
 export function placeBlocked(x, y, excludeId) {
-  if (x<BASE_R-1e-9||x>BW-BASE_R+1e-9||y<BASE_R-1e-9||y>BH-BASE_R+1e-9) return {id:"board edge"};
+  const R = NAV_R;
+  if (x<R-1e-9||x>BW-R+1e-9||y<R-1e-9||y>BH-R+1e-9) return {id:"board edge"};
   if (!ptFree(x, y)) return {id:"terrain"};
-  for (const o of OPS) if (o.alive && o.id !== excludeId && dist(x,y,o.x,o.y) < 2*BASE_R) return {id:o.name};
+  for (const o of OPS) if (o.alive && o.id !== excludeId && dist(x,y,o.x,o.y) < R + opR(o)) return {id:o.name};
   return null;
 }
 
@@ -29,11 +30,12 @@ export const climbDown = h => RULES.climbDown(h);
 export const climbCost = h => h > 0 ? climbUp(h) + climbDown(h) : 0;   // walking legs: no climb, no cost
 export let PORTALS = [], EPX = new Float64Array(0), EPY = new Float64Array(0), EP_CELLS = [], CELL_SP = new Map(), NAVVER = 0;
 export const FIELDS = new Map();
+const NAVS = new Map();               // base radius -> its portals (a bigger base needs wider gaps)
 // Tallest terrain a base passes over on a straight crossing (its middle and both
 // flanks); Infinity if any of it can't be climbed.
 export function crossingHeight(ax, ay, bx, by) {
   const L = dist(ax, ay, bx, by); if (L < 1e-9) return 0;
-  const f = BASE_R * 0.82;                     // the base's flanks
+  const f = NAV_R * 0.82;                      // the base's flanks
   const qx = -(by - ay) / L * f, qy = (bx - ax) / L * f;
   let zq = 0, bad = false;
   for (const s of [0, -1, 1]) {
@@ -109,7 +111,17 @@ export function attachCells(x, y, radii, tol) {
   }
   return [];
 }
-export function buildNav() {
+// A new map: drop every base size's portals and build the ruleset base's.
+export function buildNav() { NAVS.clear(); FIELDS.clear(); NAVVER++; navFor(NAV_R); }
+// Plan for a base of radius r (an operative's own base, opR(op)): route over its free
+// cells and through its portals, built the first time that size moves on this map.
+export function useBase(r) {
+  setNavRadius(r);
+  const N = NAVS.get(r);
+  if (N) ({PORTALS, EPX, EPY, EP_CELLS, CELL_SP} = N);
+  else navFor(r);
+}
+function navFor(r) {
   findPortals();
   const NE = PORTALS.length * 2, NC = G.n;
   EPX = new Float64Array(NE); EPY = new Float64Array(NE); EP_CELLS = []; CELL_SP = new Map();
@@ -119,7 +131,7 @@ export function buildNav() {
     EP_CELLS.push(cells);
     for (const k of cells) { let l = CELL_SP.get(k); if (!l) CELL_SP.set(k, l = []); l.push(NC + 1 + e); }
   }
-  NAVVER++; FIELDS.clear();
+  NAVS.set(r, {PORTALS, EPX, EPY, EP_CELLS, CELL_SP});
 }
 export function Heap() { this.k = []; this.v = []; this.top = 0; }
 Heap.prototype.push = function(key, val) {
@@ -205,7 +217,7 @@ export function buildField(sx, sy, lo, hi, bound) {
   return {g, par, vz, vpad, closed, X, Y, S0, NC, N, tol};
 }
 export function getField(sx, sy, lo, hi, bound) {
-  const key = `${NAVVER}|${sx}|${sy}|${lo}|${hi}|${bound}`;
+  const key = `${NAVVER}|${NAV_R}|${sx}|${sy}|${lo}|${hi}|${bound}`;
   let F = FIELDS.get(key);
   if (!F) { if (FIELDS.size >= 6) FIELDS.clear(); F = buildField(sx, sy, lo, hi, bound); FIELDS.set(key, F); }
   return F;
@@ -361,7 +373,7 @@ export function straightenIncrements(path) {
     if (ext < 1e-6) continue; // already whole
     const ux = (bx - ax) / L1, uy = (by - ay) / L1;
     const nx = bx + ux * ext, ny = by + uy * ext;
-    if (nx < BASE_R || nx > BW - BASE_R || ny < BASE_R || ny > BH - BASE_R) continue;
+    if (nx < NAV_R || nx > BW - NAV_R || ny < NAV_R || ny > BH - NAV_R) continue;
     if (!segFree(ax, ay, nx, ny) || !segFree(nx, ny, cx, cy)) continue;
     if (legCost(dist(nx, ny, cx, cy)) > legCost(dist(bx, by, cx, cy))) continue;
     path[i][0] = nx; path[i][1] = ny;
