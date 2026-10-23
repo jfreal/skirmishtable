@@ -40,6 +40,17 @@ describe('climbing onto and dropping off a floor (Volkus AO 1, Large ruin 1)', (
     expect(total(p)).toBe(6);
   });
 
+  it('the climb is drawn straight up the floor\'s face, where the base meets it', () => {
+    const p = mv.findPath(10.5, 17.55, 11.15, 17.55, 0, 6, 9, 0, L.l);
+    const st = mv.chopIncrements(p).find(s => s.climb);
+    const [[t0, h0], [ta, ha], [tb, hb], [t1, h1]] = st.profile;
+    expect([t0, h0, ha, hb, t1, h1]).toEqual([0, 0, 0, 3, 1, 3]);
+    expect(ta).toBe(tb);                                              // vertical
+    expect(ta).toBeGreaterThanOrEqual(0); expect(ta).toBeLessThan(1);    // 0: it stands right at the lip
+    const x = st.x1 + (st.x2 - st.x1) * ta;
+    expect(grid.floorAt(L, x + 0.05, st.y1) || grid.G.cls[Math.floor(st.y1 * 10) * grid.G.nx + Math.floor(x * 10)] > 0).toBe(true);
+  });
+
   it('a Dash can\'t climb up', () => {
     const p = mv.findPath(10.5, 17.55, 12.35, 18.35, 0, -1, 3, 0, L.l);
     expect(p === null || p.partial || p[p.length - 1][4] !== L.l).toBe(true);
@@ -78,6 +89,15 @@ describe('the free 2" of dropping is for the whole action', () => {
   beforeAll(() => world.buildWorld(world.MAPS.volkus));
   // two climbs over 3" terrain: up 3" each, and 3" down each
   const two = () => [[2, 2, 0, 0, 0], [4, 2, 3, 0, 0], [6, 2, 3, 0, 0]];
+
+  it('a climb over a wall goes up its near face and down its far face', () => {
+    const p = mv.findPath(8.9, 7.0, 10.9, 7.0, 0, 6);
+    const st = mv.chopIncrements(p).find(s => s.climb);
+    const pr = st.profile;
+    expect(pr.map(q => q[1])).toEqual([0, 0, 2, 2, 0, 0]);
+    expect(pr[1][0]).toBe(pr[2][0]); expect(pr[3][0]).toBe(pr[4][0]);
+    expect(pr[1][0]).toBeGreaterThan(0); expect(pr[3][0]).toBeGreaterThan(pr[1][0]); expect(pr[3][0]).toBeLessThan(1);
+  });
 
   it('one action: the second drop pays its full height', () => {
     expect(mv.legCosts(two()).slice(1).map(c => c.cost)).toEqual([2 + 3 + 1, 2 + 3 + 3]);

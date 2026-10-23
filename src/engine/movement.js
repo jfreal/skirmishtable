@@ -571,6 +571,27 @@ export function clampPath(path, cap) {
   }
   return { path: out, total: rounded, clamped };
 }
+// The side view of a climb or drop leg, for drawing: [[t, height], ...] along it (t = 0..1),
+// walking to the terrain's face, straight up (or down) it, and on. The face is where the
+// leg's middle line first meets solid terrain or the floor (from the lower end for a
+// level, from each end for a climb over terrain of height h).
+export function climbProfile(x1, y1, z1, x2, y2, z2, kind, level, h) {
+  const L = dist(x1, y1, x2, y2), n = Math.max(2, Math.ceil(L / 0.05));
+  const solid = t => {
+    const x = x1 + (x2 - x1) * t, y = y1 + (y2 - y1) * t;
+    const i = Math.floor(x / GRES), j = Math.floor(y / GRES);
+    if (i < 0 || j < 0 || i >= G.nx || j >= G.ny) return false;
+    const c = G.cls[j * G.nx + i];
+    return (c >= C_WALL && c <= C_LIGHT) || (!!level && floorAt(level, x, y));
+  };
+  const from = (a, b) => { for (let s = 0; s <= n; s++) { const t = a + (b - a) * s / n; if (solid(t)) return t; } return null; };
+  if (kind === "over") {
+    const ta = from(0, 1) ?? 0.25, tb = Math.max(ta, from(1, 0) ?? 0.75), top = z1 + h;
+    return [[0, z1], [ta, z1], [ta, top], [tb, top], [tb, z2], [1, z2]];
+  }
+  const t = kind === "up" ? from(0, 1) ?? 0.5 : from(1, 0) ?? 0.5;   // up: where the floor starts; drop: where it ends
+  return [[0, z1], [t, z1], [t, z2], [1, z2]];
+}
 // Chop a route into the actual movement increments: straight steps of at most 1",
 // direction changes only between steps. A final sub-inch step still costs a full inch.
 // Every step says the heights it starts and ends at (z1, z2: 0 = the table).
@@ -584,9 +605,9 @@ export function chopIncrements(path) {
     if (L < 1e-9 && !z) continue;
     if (z) { // a climb (up and over, or onto a floor) or a drop: one indivisible step costing across + up + down (+ any burned wait)
       const c = lc[i];
-      steps.push({x1, y1, x2, y2, z1, z2, climb: z, kind: l1 === l2 ? "over" : z2 > z1 ? "up" : "drop",
-                  up: c.up, down: c.down, rise: c.rise, fall: c.fall, level: l1 === l2 ? null : LEVELS[Math.max(l1, l2) - 1],
-                  pad, cost: c.cost});
+      const kind = l1 === l2 ? "over" : z2 > z1 ? "up" : "drop", level = l1 === l2 ? null : LEVELS[Math.max(l1, l2) - 1];
+      steps.push({x1, y1, x2, y2, z1, z2, climb: z, kind, up: c.up, down: c.down, rise: c.rise, fall: c.fall, level,
+                  profile: climbProfile(x1, y1, z1, x2, y2, z2, kind, level, z), pad, cost: c.cost});
       continue;
     }
     // steps of the ruleset's increment; measured-exactly rules are drawn in 1" ticks
