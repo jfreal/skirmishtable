@@ -29,6 +29,9 @@ header .hint {
 .boardwrap { flex: 1 1 560px; min-width: 320px; }
 .viewbar { display: flex; gap: 6px; align-items: center; margin-bottom: 8px; }
 .viewbar button { white-space: nowrap; }
+.ringpick { display: flex; gap: 6px; font-size: 11px; color: #b8ad9e; white-space: nowrap; }
+.ringpick select { background: #262019; color: #e8e2d8; border: 1px solid #3a332a; border-radius: 4px; padding: 1px 3px; font-size: 11px; }
+@media (max-width: 760px) { .ringpick label { font-size: 0; } .ringpick select { font-size: 11px; max-width: 92px; } }
 /* fixed height too: the note shows model-loading progress, and must not move the table */
 .viewbar .hint { flex: 1; line-height: 1.35; height: calc(2 * 1.35em); overflow: hidden;
   display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }

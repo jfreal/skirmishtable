@@ -149,9 +149,14 @@ test('switches maps from the picker and undoes a move', async ({ page }) => {
 
 test('the 3D table draws only when something changes, and redraws reuse their GPU resources', async ({ page }) => {
   const frames = () => kz(page, () => skirmishtable.table3d.three.renderer.info.render.frame);
-  // once loading settles, an untouched table draws nothing
-  await expect.poll(async () => { const a = await frames(); await page.waitForTimeout(700); return (await frames()) - a; },
-    { timeout: 60_000 }).toBe(0);
+  const drawn = async () => { const a = await frames(); await page.waitForTimeout(700); return (await frames()) - a; };
+  // animated base rings draw every frame...
+  await page.selectOption('#ringready', 'ripple');
+  await expect.poll(drawn, { timeout: 60_000 }).toBeGreaterThan(0);
+  // ...and with still rings, once loading settles, an untouched table draws nothing
+  await page.selectOption('#ringready', 'thin');
+  await page.selectOption('#ringactive', 'none');
+  await expect.poll(drawn, { timeout: 60_000 }).toBe(0);
   // re-rendering the operatives (selection, range rings, labels) allocates no new geometries or textures
   const memory = () => kz(page, async () => {
     await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
