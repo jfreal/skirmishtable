@@ -20,7 +20,7 @@ import { armDrag, setBoardPicker } from '../ui/input.js';
 import { SHOT_KINDS, shotsFrom } from '../engine/shots.js';
 import { lineBlocked, visibilityPolygon } from '../engine/sight.js';
 import { opR, perimeterPts } from '../engine/geometry.js';
-import { addModels, ensureManifest, hasModels, progress, setRedraw, steamBytes, steamRemembered, useSteamSource } from './models.js';
+import { addModels, ensureManifest, hasModels, progress, retryFailed, setRedraw, steamBytes, steamRemembered, useSteamSource } from './models.js';
 import { onMinisChange, unitObject } from './units.js';
 import { ACTIVE_STYLES, READY_STYLES, RING_T, animates, baseRing, classicBand, ringStyle, setRingStyle } from './rings.js';
 
@@ -696,10 +696,16 @@ export function sync3DOps() {
 const NOTE_NO_MODELS = `Block terrain: this site doesn't host the TTS models. Load them straight from Steam (${Math.round(steamBytes / 1e6)} MB, once).`;
 const NOTE3D = "Drag an operative to move it · drag the table to orbit, scroll to zoom · the ruler is on the 2D map.";
 function showModels(note) {
-  document.getElementById("loadtts").style.display = "none";
+  const btn = document.getElementById("loadtts");
+  btn.style.display = "none";
   progress.onChange = () => {
     const pct = progress.total ? Math.min(100, Math.round(100 * progress.loaded / progress.total)) : 100;
-    note.textContent = pct < 100 ? `Loading the TTS models and textures… ${pct}% of ${(progress.total / 1e6).toFixed(0)} MB` : NOTE3D;
+    if (pct < 100) note.textContent = `Loading the TTS models and textures… ${pct}% of ${(progress.total / 1e6).toFixed(0)} MB`;
+    else if (progress.failed) {
+      // say so (blocks and cylinders stand in) rather than leave a bare table; the console has the cause
+      note.textContent = `${progress.failed} download${progress.failed > 1 ? "s" : ""} from Steam failed: blocks stand in. Check the connection, or an ad/content blocker on cdn.steamusercontent.com.`;
+      btn.textContent = "Retry"; btn.style.display = "";
+    } else note.textContent = NOTE3D;
   };
   build3DScene(); progress.onChange();
 }
@@ -723,7 +729,7 @@ export function setView(to3d) {
       if (m && view3D) showModels(note);
       else if (!m) {
         ensureMeshPack();
-        if (view3D) { note.textContent = NOTE_NO_MODELS; document.getElementById("loadtts").style.display = ""; }
+        if (view3D) { note.textContent = NOTE_NO_MODELS; Object.assign(document.getElementById("loadtts"), { textContent: "Load from Steam" }).style.display = ""; }
       }
     });
     setBoardPicker(groundPick);
@@ -745,7 +751,7 @@ export function wireViewToggle() {
   });
   document.getElementById("view2d").onclick = () => setView(false);
   document.getElementById("view3d").onclick = () => setView(true);
-  document.getElementById("loadtts").onclick = () => { useSteamSource(); showModels(document.getElementById("v3dnote")); };
+  document.getElementById("loadtts").onclick = () => { retryFailed(); useSteamSource(); showModels(document.getElementById("v3dnote")); };
   // base ring styles to try: ready operatives / the active one
   for (const [id, k, list] of [["ringready", "ready", READY_STYLES], ["ringactive", "active", ACTIVE_STYLES]]) {
     const sel = document.getElementById(id);

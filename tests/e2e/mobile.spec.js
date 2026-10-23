@@ -90,3 +90,17 @@ test('a finger drags an operative on the 2D map', async ({ page }) => {
   expect(during && during.active).toBe(true);
   await expectNear(page, 'A2', 13, 12);
 });
+
+// The 3D toolbar wraps on a phone: Load from Steam (the only way to get the models on the
+// public site) and its note stay on screen, and the page never scrolls sideways.
+test('Load from Steam is on screen on a phone', async ({ page }) => {
+  const btn = page.locator('#loadtts');
+  await expect(btn).toBeVisible();
+  const box = await btn.boundingBox(), w = page.viewportSize().width;   // the screen, not innerWidth (an overflowing page widens that)
+  expect(box.x).toBeGreaterThanOrEqual(0);
+  expect(box.x + box.width).toBeLessThanOrEqual(w);
+  const note = await page.locator('#v3dnote').boundingBox();
+  expect(note.width).toBeGreaterThan(200);
+  expect(note.x + note.width).toBeLessThanOrEqual(w);
+  expect(await kz(page, () => document.documentElement.scrollWidth)).toBeLessThanOrEqual(w);
+});

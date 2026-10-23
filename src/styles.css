@@ -26,16 +26,18 @@ header .hint {
 }
 @media (max-width: 760px) { header .hint { height: calc(3 * 1.35em); -webkit-line-clamp: 3; } }
 .main { display: flex; gap: 12px; padding: 12px 16px; flex: 1; align-items: flex-start; flex-wrap: wrap; }
-.boardwrap { flex: 1 1 560px; min-width: 320px; }
-.viewbar { display: flex; gap: 6px; align-items: center; margin-bottom: 8px; }
+.boardwrap { flex: 1 1 560px; min-width: min(320px, 100%); }
+/* wraps: on a phone the buttons and ring pickers fill the width, and the note and Load from
+   Steam would otherwise sit off the right edge of the screen */
+.viewbar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 8px; }
 .viewbar button { white-space: nowrap; }
 .ringpick { display: flex; gap: 6px; font-size: 11px; color: #b8ad9e; white-space: nowrap; }
 .ringpick select { background: #262019; color: #e8e2d8; border: 1px solid #3a332a; border-radius: 4px; padding: 1px 3px; font-size: 11px; }
 @media (max-width: 760px) { .ringpick label { font-size: 0; } .ringpick select { font-size: 11px; max-width: 92px; } }
 /* fixed height too: the note shows model-loading progress, and must not move the table */
-.viewbar .hint { flex: 1; line-height: 1.35; height: calc(2 * 1.35em); overflow: hidden;
+.viewbar .hint { flex: 1 1 240px; min-width: 0; line-height: 1.35; height: calc(2 * 1.35em); overflow: hidden;
   display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
-@media (max-width: 760px) { .viewbar .hint { height: calc(3 * 1.35em); -webkit-line-clamp: 3; font-size: 11px; } }
+@media (max-width: 760px) { .viewbar .hint { flex-basis: 100%; height: calc(3 * 1.35em); -webkit-line-clamp: 3; font-size: 11px; } }
 #board3d { width: 100%; display: none; border-radius: 6px; overflow: hidden; background: #4a443c; }
 #board3d canvas { display: block; touch-action: none; } /* touches on the table drag or orbit, never scroll the page */
 svg#board { width: 100%; height: auto; display: block; border-radius: 6px; }
