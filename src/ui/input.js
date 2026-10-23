@@ -6,7 +6,7 @@
 import { state } from '../state.js';
 import { CTRL, S } from '../config.js';
 import { dist, opGap, opR } from '../engine/geometry.js';
-import { clampPath, climbDown, climbUp, findPath, placeBlocked, straightenIncrements, useBase } from '../engine/movement.js';
+import { clampPath, climbDown, climbUp, placeBlocked, planRoute, useBase } from '../engine/movement.js';
 import { foesNear } from '../engine/engage.js';
 import { BH, BW, OPS } from '../engine/world.js';
 import { RULES, fmtIn, moveSpec } from '../rules/index.js';
@@ -72,8 +72,9 @@ function planDrag(x, y) {
   useBase(R);                                       // route, fit and collide this operative's own base
   const gx = Math.min(BW - R, Math.max(R, x));
   const gy = Math.min(BH - R, Math.max(R, y));
-  // Engagement range: a normal move can't end within control range of an enemy, so
-  // dragging there turns the move into a Charge (Move + 2″, 1AP) when one is allowed.
+  // Engagement range: a normal move can't go within control range of an enemy (planRoute
+  // routes round it), so dragging there turns the move into a Charge (Move + 2″, 1AP) when
+  // one is allowed. A Charge may enter one enemy's control range, then has to stay in it.
   const intoFoes = foesNear(gx, gy, d.op.team, d.op.id, R).length > 0;
   const charging = state.moveType === "charge" || (intoFoes && mayCharge(d.op));
   d.autoCharge = charging && state.moveType !== "charge";
@@ -81,9 +82,8 @@ function planDrag(x, y) {
   const free = !placeBlocked(gx, gy, d.op.id);
   let bestPlan = null;
   if (free) for (const pl of plans) {
-    const raw = findPath(d.sx, d.sy, gx, gy, pl.lo, pl.hi, pl.cap);
+    const raw = planRoute(d.op, gx, gy, pl.lo, pl.hi, pl.cap, pl.p1.type === "charge");
     if (!raw) continue;
-    straightenIncrements(raw);
     const c = clampPath(raw, pl.cap);
     const end = c.path[c.path.length - 1];
     const reach = !c.clamped && !raw.partial;
@@ -104,7 +104,7 @@ function planDrag(x, y) {
     d.foes = foesNear(end[0], end[1], d.op.team, d.op.id, R);
     d.why = placeBlocked(end[0], end[1], d.op.id) ? "occupied"
       : charging && !d.foes.length ? "a Charge must end within engagement range"
-      : !charging && d.foes.length && RULES.moves.charge ? "engagement range — can't Charge after moving"
+      : !charging && (d.foes.length || intoFoes) && RULES.moves.charge ? "engagement range — can't Charge after moving"
       : null;
     d.valid = !d.why;
   } else {

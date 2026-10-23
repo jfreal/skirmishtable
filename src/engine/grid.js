@@ -31,6 +31,41 @@ export function setNavRadius(r) {
   NAV_R = r;
   for (let k = 0; k < G.n; k++) G.free[k] = G.clear[k] >= r - FREE_EPS ? 1 : 0;
 }
+// Control range zones (movement.planRoute sets them while a move is routed): `out` discs
+// the base may not come within (centre at least r + NAV_R from it), and at most one
+// `inside` disc it must stay within (centre within rOut + NAV_R, clear of the enemy's
+// base rIn). Analytic, folded into clearAt, so segFree/ptFree respect them exactly.
+export let ZONES = null;
+export function setZones(z) { ZONES = z; }
+export function zoneClear(x, y) {
+  let c = 1e3;
+  for (const z of ZONES.out) c = Math.min(c, Math.hypot(x - z.x, y - z.y) - z.r);
+  const I = ZONES.inside;
+  if (I) { const d = Math.hypot(x - I.x, y - I.y); c = Math.min(c, d - I.rIn, I.rOut + 2 * NAV_R - d); }
+  return c;
+}
+// G.free with the zones applied (a copy; G.free itself stays terrain-only)
+export function zoneFree() {
+  const {nx, ny} = G, I = ZONES.inside, f = I ? new Uint8Array(G.n) : G.free.slice();
+  const fix = (x0, y0, x1, y1, I) => {
+    const i0 = Math.max(0, Math.floor(x0 / GRES)), i1 = Math.min(nx - 1, Math.floor(x1 / GRES));
+    const j0 = Math.max(0, Math.floor(y0 / GRES)), j1 = Math.min(ny - 1, Math.floor(y1 / GRES));
+    for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+      const k = j * nx + i;
+      f[k] = G.free[k] && zoneClear((i + 0.5) * GRES, (j + 0.5) * GRES) >= NAV_R - FREE_EPS ? 1 : 0;
+    }
+  };
+  if (I) { const r = I.rOut + NAV_R; fix(I.x - r, I.y - r, I.x + r, I.y + r); }
+  else for (const z of ZONES.out) { const r = z.r + NAV_R; fix(z.x - r, z.y - r, z.x + r, z.y + r); }
+  return f;
+}
+// a straight run (a climb's crossing) that keeps to the zones
+export function zoneSegFree(x1, y1, x2, y2) {
+  if (!ZONES) return true;
+  const L = Math.hypot(x2 - x1, y2 - y1), n = Math.max(1, Math.ceil(L / 0.05));
+  for (let s = 0; s <= n; s++) if (zoneClear(x1 + (x2 - x1) * s / n, y1 + (y2 - y1) * s / n) < NAV_R - FREE_EPS) return false;
+  return true;
+}
 export function newGrid() {
   const nx = Math.ceil(BW / GRES - 1e-9), ny = Math.ceil(BH / GRES - 1e-9), n = nx * ny;
   G = {nx, ny, n, cls: new Uint8Array(n), zq: new Uint8Array(n), fid: new Int32Array(n),
@@ -180,7 +215,7 @@ export function buildClearance() {
     G.clear[k] = Math.min(d, x, BW - x, y, BH - y);
     G.free[k] = G.clear[k] >= BASE_R - FREE_EPS ? 1 : 0;
   }
-  NAV_R = BASE_R;
+  NAV_R = BASE_R; ZONES = null;
 }
 // clearance at any point: bilinear over cell centres, board edges exact
 export function clearAt(x, y) {
@@ -190,7 +225,8 @@ export function clearAt(x, y) {
   const j0 = j < 0 ? 0 : j >= ny ? ny - 1 : j, j1 = j + 1 < 0 ? 0 : j + 1 >= ny ? ny - 1 : j + 1;
   const val = (clear[j0 * nx + i0] * (1 - fx) + clear[j0 * nx + i1] * fx) * (1 - fy)
             + (clear[j1 * nx + i0] * (1 - fx) + clear[j1 * nx + i1] * fx) * fy;
-  return Math.min(val, x, BW - x, y, BH - y);
+  const c = Math.min(val, x, BW - x, y, BH - y);
+  return ZONES ? Math.min(c, zoneClear(x, y)) : c;
 }
 export function ptFree(x, y) { return clearAt(x, y) >= NAV_R - FREE_EPS; }
 // A base sliding along a segment never overlaps blocking terrain. Sphere-traced: the

@@ -114,6 +114,14 @@ parameter `t`. Sight, shadows and climb heights all use it.
   search a window `[climbLo, climbHi]` in inches from the start of the whole move. A climb must
   start at or after `climbLo`; arriving earlier burns "pad" inches waiting at the wall. It must
   finish by `climbHi`. `climbHi < 0` means no climbing (Dash only).
+- Control range (`planRoute`). A move can't go within control range of an enemy, so each
+  enemy's range is a disc routed round like terrain: `grid.ZONES` folds it into `clearAt`
+  analytically while the route is planned (and `buildField` masks its cells and climbs). A
+  Charge walks clear of every zone to an entry point on the target's range (48 round it plus
+  where the straight line in crosses it, ranked by a forward and a reverse field, best three
+  routed), then routes *inside* that range to the goal: it can go round the enemy but not
+  back out. Zones the operative starts in stay open (charging, it must stay in that one).
+  Rules without a Charge (Infinity: base contact) skip it.
 
 ### Climb portals
 
