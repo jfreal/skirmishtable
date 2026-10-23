@@ -22,6 +22,10 @@
       <button id="view3d" class="mini active" title="The table in 3D — scanned TTS terrain where available. Drag operatives to move them; drag the table to orbit.">3D table</button>
       <button id="view2d" class="mini" title="Top-down map with the ruler and line-of-sight shadows">2D map</button>
       <button id="view3dtop" class="mini" style="display:none" title="Look straight down at the table (click again for the angled view)">Top-down</button>
+      <span id="ringpick" class="ringpick" style="display:none" title="Base ring styles to try: for ready operatives, and for the active one (selected or mid-activation)">
+        <label>Ready <select id="ringready"></select></label>
+        <label>Active <select id="ringactive"></select></label>
+      </span>
       <span class="hint" id="v3dnote"></span>
       <button id="loadtts" class="mini" style="display:none" title="Download the exact Tabletop Simulator scans and textures from the Steam Workshop CDN into this browser. This site doesn't host them.">Load from Steam</button>
     </div>

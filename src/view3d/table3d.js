@@ -21,6 +21,7 @@ import { lineBlocked, visibilityPolygon } from '../engine/sight.js';
 import { opR, perimeterPts } from '../engine/geometry.js';
 import { addModels, ensureManifest, hasModels, progress, setRedraw, steamBytes, steamRemembered, useSteamSource } from './models.js';
 import { onMinisChange, unitObject } from './units.js';
+import { ACTIVE_STYLES, READY_STYLES, RING_T, animates, baseRing, classicBand, ringStyle, setRingStyle } from './rings.js';
 
 /* ---------- 3D table view ----------
    The engine stays the rules authority; this view is fed by the same state and sends
@@ -45,6 +46,21 @@ export function requestRender(shadows = false) {
     frameQueued = false;
     if (view3D) three.renderer.render(three.scene, three.camera);
   });
+}
+// Animated base rings (rings.js) need a frame every tick: a loop runs while any is on the
+// table in the 3D view, and stops on its own (it never redraws the shadow map).
+let animating = false, animLoop = false;
+function setAnimating(on) {
+  animating = on;
+  if (!on || animLoop) return;
+  animLoop = true;
+  const step = now => {
+    if (!animating || !view3D || !three) { animLoop = false; return; }
+    RING_T.value = now / 1000;
+    requestRender();
+    requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
 }
 // Geometries shared by every operative, marker and overlay piece (scaled per use), so a
 // redraw never allocates GPU buffers. Keyed by their shape; clearGroup leaves them alone.
@@ -587,6 +603,7 @@ export function sync3DOps() {
     ribbon(g, a.x, a.y, 0.1, b.x, b.y, 0.1, 0.07, ENGAGE_HEX);
     engageRing(g, a.x, a.y, opR(a)); engageRing(g, b.x, b.y, opR(b));
   }
+  let anim = false;
   for (const op of OPS) {
     if (!op.alive) continue;
     const moved = op.used.some(u => u === "reposition" || u === "dash" || u === "charge");
@@ -600,12 +617,17 @@ export function sync3DOps() {
     body.castShadow = !mini;
     body.userData.oid = op.id;        // picked by tokenAt()
     g.add(body);
-    if (mini) {
-      g.add(mini);
+    if (mini) g.add(mini);
+    if (mini && classicBand()) {
       const band = new THREE.Mesh(torus(BR + 0.06, 0.05, 32), flatMat(colHex));
       band.rotation.x = Math.PI / 2; band.position.set(op.x, 0.04, op.y);
       g.add(band);
     }
+    // the base ring: thin and see-through, out to control range and cut off by terrain;
+    // active (selected, or mid-activation) operatives get the picked active style in full colour
+    const active = op.ready && ((state.sel && state.sel.id === op.id) || op.used.length > 0);
+    const ring = baseRing(op, BR, lin(active ? parseInt(TEAMCOL[op.team].slice(1), 16) : colHex), op.ready, active);
+    if (ring) { g.add(ring); anim = anim || animates(op.ready, active); }
     if (RULES.orders && op.order === "engage") {
       const ring = new THREE.Mesh(torus(BR + 0.18, 0.07, 28), flatMat(0xff8c2e));
       ring.rotation.x = Math.PI / 2; ring.position.set(op.x, 0.08, op.y);
@@ -637,6 +659,7 @@ export function sync3DOps() {
     wl.position.set(op.x, 1.62, op.y);
     g.add(wl);
   }
+  setAnimating(anim);
   requestRender(true);
 }
 // The TTS models aren't on this server (third-party assets): say so instead of silently
@@ -658,6 +681,7 @@ export function setView(to3d) {
   document.getElementById("view2d").classList.toggle("active", !to3d);
   document.getElementById("view3d").classList.toggle("active", to3d);
   document.getElementById("view3dtop").style.display = to3d ? "" : "none";
+  document.getElementById("ringpick").style.display = to3d ? "" : "none";
   const note = document.getElementById("v3dnote");
   if (to3d) {
     if (!window.THREE || !THREE.OrbitControls) { note.textContent = "3D libraries didn't load here — using the 2D map."; setView(false); return; }
@@ -693,6 +717,12 @@ export function wireViewToggle() {
   document.getElementById("view2d").onclick = () => setView(false);
   document.getElementById("view3d").onclick = () => setView(true);
   document.getElementById("loadtts").onclick = () => { useSteamSource(); showModels(document.getElementById("v3dnote")); };
+  // base ring styles to try: ready operatives / the active one
+  for (const [id, k, list] of [["ringready", "ready", READY_STYLES], ["ringactive", "active", ACTIVE_STYLES]]) {
+    const sel = document.getElementById(id);
+    sel.innerHTML = list.map(([v, label]) => `<option value="${v}"${ringStyle[k] === v ? " selected" : ""}>${label}</option>`).join("");
+    sel.onchange = () => { setRingStyle(k, sel.value); if (three) sync3DOps(); };
+  }
   let top = false;
   document.getElementById("view3dtop").onclick = ev => {
     top = !top; topDown(top);
