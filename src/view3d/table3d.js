@@ -367,27 +367,21 @@ export function sync3DOverlay() {
       for (const st of steps) {
         inch += st.cost;
         const hex = inch <= d.primAllow + 1e-9 || !d.p2 ? colorOf(d.p1.type) : colorOf(d.p2.type);
-        if (st.climb && st.kind !== "over") {   // onto a floor: up the side, then across; off one: across, then down
-          const h1 = st.z1 + lift, h2 = st.z2 + lift, up = st.kind === "up", col = up ? 0xb5731f : 0x3f7bb5;
-          const mx = st.x1 + (st.x2 - st.x1) * (up ? 0.35 : 0.65), my = st.y1 + (st.y2 - st.y1) * (up ? 0.35 : 0.65);
-          const hm = Math.max(h1, h2) + 0.2;
-          ribbon(g, st.x1, st.y1, h1, mx, my, hm, 0.1, col);
-          ribbon(g, mx, my, hm, st.x2, st.y2, h2, 0.1, col);
-          const lab = cachedText(up ? `▲${fmtIn(st.up)}″ = ${fmtIn(st.cost)}″` : `▼${st.climb}″ (${fmtIn(st.down)}″) = ${fmtIn(st.cost)}″`,
-            up ? "#8a5414" : "#24507a", "#fbf6ea", 0.75);
-          lab.position.set(mx, hm + 1.0, my);
-          g.add(lab);
-        } else if (st.climb) {
-          const top = st.climb + 0.35, N = 14, base = st.z1 + lift;
-          let px0 = st.x1, py0 = st.y1, ph0 = base;
-          for (let i = 1; i <= N; i++) {
-            const t = i / N, h = base + top * Math.sin(Math.PI * Math.min(1, t * 1.15));
-            const xx = st.x1 + (st.x2 - st.x1) * t, yy = st.y1 + (st.y2 - st.y1) * t;
-            ribbon(g, px0, py0, ph0, xx, yy, i === N ? base : h, 0.1, 0xb5731f);
-            px0 = xx; py0 = yy; ph0 = i === N ? base : h;
+        if (st.climb) {   // a climb or a drop: walk to the face, a vertical line up (or down) it, walk on
+          const col = st.kind === "drop" ? 0x3f7bb5 : 0xb5731f, at = t => [st.x1 + (st.x2 - st.x1) * t, st.y1 + (st.y2 - st.y1) * t];
+          const P = st.profile.map(([t, h]) => [...at(t), h + lift]);
+          for (let i = 1; i < P.length; i++) {
+            const [ax, ay, ah] = P[i - 1], [bx, by, bh] = P[i];
+            if (Math.hypot(bx - ax, by - ay, bh - ah) > 1e-6) ribbon(g, ax, ay, ah, bx, by, bh, ah === bh ? 0.1 : 0.07, col);
           }
-          const lab = cachedText(`▲${fmtIn(st.up)}″ ▼${fmtIn(st.down)}″ = ${fmtIn(st.cost)}″`, "#8a5414", "#fbf6ea", 0.75);
-          lab.position.set((st.x1 + st.x2) / 2, base + top + 1.0, (st.y1 + st.y2) / 2);
+          const [fx, fy, fh] = st.kind === "drop" ? P[P.length - 2] : P[1];   // where it climbed from, or dropped to
+          dot(g, fx, fy, fh, 0.12, col);
+          const top = Math.max(...P.map(q => q[2]));
+          const lab = cachedText(st.kind === "up" ? `▲${fmtIn(st.up)}″ = ${fmtIn(st.cost)}″`
+            : st.kind === "drop" ? `▼${st.climb}″ (${fmtIn(st.down)}″) = ${fmtIn(st.cost)}″`
+            : `▲${fmtIn(st.up)}″ ▼${fmtIn(st.down)}″ = ${fmtIn(st.cost)}″`,
+            st.kind === "drop" ? "#24507a" : "#8a5414", "#fbf6ea", 0.75);
+          lab.position.set(fx, top + 1.0, fy);
           g.add(lab);
         } else {
           ribbon(g, st.x1, st.y1, st.z1 + lift, st.x2, st.y2, st.z2 + lift, 0.12, hex);
