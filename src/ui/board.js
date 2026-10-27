@@ -6,7 +6,7 @@ import { CTRL, ENGAGE_COL, OBJ_R, TEAMCOL, TEAMGREY, TEAMNAME } from '../config.
 import { VOLKUS_PIECES } from '../data/volkus-pieces.js';
 import { isInjured } from '../engine/dice.js';
 import { blobPoints, dist, opR, perimeterPts, px, wallSegments } from '../engine/geometry.js';
-import { chopIncrements, climbDown, climbUp, opLayer } from '../engine/movement.js';
+import { chopIncrements, climbDown, climbUp, frontSteps, opLayer } from '../engine/movement.js';
 import { LEVELS } from '../engine/grid.js';
 import { engagements } from '../engine/engage.js';
 import { SHOT_KINDS, shotsFrom } from '../engine/shots.js';
@@ -395,10 +395,12 @@ export function renderOverlay(cursor) {
       for (const st of steps)
         el("circle", {cx:px(st.x2), cy:px(st.y2), r:px(R), fill:"none", stroke:BASE_TRAIL,
           "stroke-width":1.2, opacity:0.55, "data-trail":"1"}, swept);
+      // the increments themselves are traced by the front of the base, from its edge
       let inch = 0;
-      for (const st of steps) {
+      for (const st of frontSteps(steps, R)) {
         inch += st.cost;
         const c = inch <= state.drag.primAllow + 1e-9 || !state.drag.p2 ? colorOf(state.drag.p1.type) : colorOf(state.drag.p2.type);
+        if (st.gap) el("line", {x1:px(st.gap[0]), y1:px(st.gap[1]), x2:px(st.x1), y2:px(st.y1), stroke:c, "stroke-width":2}, gOverlay);
         if (st.climb) { // a climb (over a wall, or onto a floor) or a drop: bold amber rungs + the height paid
           el("line", {x1:px(st.x1), y1:px(st.y1), x2:px(st.x2), y2:px(st.y2),
             stroke: st.kind === "drop" ? "#3f7bb5" : "#b5731f", "stroke-width":3, "stroke-dasharray":"3 3"}, gOverlay);

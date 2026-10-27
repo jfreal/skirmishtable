@@ -8,7 +8,7 @@
 import { state } from '../state.js';
 import { CTRL, ENGAGE_COL, OBJ_R, TEAMCOL, TEAMGREY } from '../config.js';
 import { BH, BW, DECOR, DROPZONES, MAP, OBJECTIVES, OPS, TERRAIN } from '../engine/world.js';
-import { chopIncrements } from '../engine/movement.js';
+import { chopIncrements, frontSteps } from '../engine/movement.js';
 import { LEVELS, floorAt, onLayer, ptFree } from '../engine/grid.js';
 import { RULES, fmtIn } from '../rules/index.js';
 import { MARKER_R, SHOT_COL, dragLabelText, rangeRings, shotEye, shotHit } from '../ui/board.js';
@@ -364,9 +364,10 @@ export function sync3DOverlay() {
         g.add(out);
       }
       let inch = 0;
-      for (const st of steps) {
+      for (const st of frontSteps(steps, R)) {     // the increments, traced by the front of the base
         inch += st.cost;
         const hex = inch <= d.primAllow + 1e-9 || !d.p2 ? colorOf(d.p1.type) : colorOf(d.p2.type);
+        if (st.gap) ribbon(g, st.gap[0], st.gap[1], st.z1 + lift, st.x1, st.y1, st.z1 + lift, 0.12, hex);
         if (st.climb) {   // a climb or a drop: walk to the face, a vertical line up (or down) it, walk on
           const col = st.kind === "drop" ? 0x3f7bb5 : 0xb5731f, at = t => [st.x1 + (st.x2 - st.x1) * t, st.y1 + (st.y2 - st.y1) * t];
           const P = st.profile.map(([t, h]) => [...at(t), h + lift]);

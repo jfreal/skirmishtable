@@ -740,3 +740,20 @@ export function planRoute(op, gx, gy, lo, hi, cap, charge, gl) {
   }
   return best ? best.p : direct;
 }
+
+// The same steps as the front of the base travels them: each pushed r forward along its
+// heading, so the first increment starts at the base edge and the last ends at the landing
+// ghost's front. Where the heading turns, `gap` is the previous front end to join it to.
+export function frontSteps(steps, r) {
+  let hx = 0, hy = 0, prev = null;
+  const first = steps.find(st => dist(st.x1, st.y1, st.x2, st.y2) > 1e-9);
+  if (first) { const L = dist(first.x1, first.y1, first.x2, first.y2); hx = (first.x2-first.x1)/L; hy = (first.y2-first.y1)/L; }
+  return steps.map(st => {
+    const L = dist(st.x1, st.y1, st.x2, st.y2);
+    if (L > 1e-9) { hx = (st.x2-st.x1)/L; hy = (st.y2-st.y1)/L; }
+    const f = {...st, x1: st.x1 + hx*r, y1: st.y1 + hy*r, x2: st.x2 + hx*r, y2: st.y2 + hy*r};
+    if (prev && dist(prev[0], prev[1], f.x1, f.y1) > 1e-6) f.gap = prev;
+    prev = [f.x2, f.y2];
+    return f;
+  });
+}

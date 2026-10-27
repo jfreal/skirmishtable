@@ -17,6 +17,18 @@ describe('climb costs (core rules)', () => {
   });
 });
 
+describe('increments drawn from the front of the base', () => {
+  it('start at the base edge, end at the ghost front, and join across turns', () => {
+    const steps = [{x1: 0, y1: 0, x2: 1, y2: 0}, {x1: 1, y1: 0, x2: 2, y2: 0}, {x1: 2, y1: 0, x2: 2, y2: 1}];
+    const f = mv.frontSteps(steps, 0.5);
+    expect([f[0].x1, f[0].y1]).toEqual([0.5, 0]);
+    expect([f[1].x2, f[1].y2]).toEqual([2.5, 0]);
+    expect(f[1].gap).toBeUndefined();
+    expect(f[2].gap).toEqual([2.5, 0]);
+    expect([f[2].x1, f[2].y1, f[2].x2, f[2].y2]).toEqual([2, 0.5, 2, 1.5]);
+  });
+});
+
 describe('hand-made Volkus Ruins', () => {
   beforeAll(() => world.buildWorld(world.MAPS.volkus));
 
