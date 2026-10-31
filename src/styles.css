@@ -151,30 +151,31 @@ footer a { color: #b0764f; }
 .netline { margin: 2px 0 4px; }
 #netlink, #sharelink, #replaylink { flex: 1; min-width: 0; background: #262019; color: #e8e2d8; border: 1px solid #3a332a; border-radius: 4px; padding: 2px 6px; font-size: 12px; }
 #minis select { background: #262019; color: #e8e2d8; border: 1px solid #3a332a; border-radius: 4px; padding: 2px 4px; }
-/* Dice tray: dice sorted into columns by face, as on the TTS dice mat */
-.dicebtns { align-items: center; }
-.dicebtns .dhit { margin-left: auto; font-size: 12px; color: #b9ad9d; }
-.dicebtns select { background: #262019; color: #e8e2d8; border: 1px solid #3a332a; border-radius: 4px; }
-.dgrid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; margin: 6px 0; }
-.dcol { background: #171410; border: 1px solid #2e2921; border-radius: 6px; padding: 4px 2px; text-align: center; min-height: 64px; display: flex; flex-direction: column; }
-.dcol.crit { border-color: #8a6a1f; } .dcol.hit { border-color: #31402f; }
-.dface { font-size: 11px; color: #8d8276; }
-.dpips { display: flex; flex-wrap: wrap; justify-content: center; gap: 2px; flex: 1; align-content: flex-start; padding: 2px 0; }
-.die { width: 20px; height: 20px; padding: 0; font-size: 12px; font-weight: 700; border-radius: 4px; }
-.die.crit { background: #e0a82e; color: #1c120c; border-color: #e0a82e; }
-.die.hit { background: #6faf82; color: #12160f; border-color: #6faf82; }
-.die.miss { background: #2a241d; color: #8d8276; }
-.die.rr { outline: 2px solid #4f8fd6; outline-offset: -2px; }
-.dcount { font-size: 12px; font-weight: 700; color: #e8e2d8; min-height: 14px; }
-.dsum { display: flex; align-items: center; gap: 8px; font-size: 13px; }
-.dsum .mini { margin-left: auto; }
 .woundbtns { margin-top: 2px; }
-/* Dice box: physical dice on a mat over the table (src/ui/dicebox.js). Dice are placed by
-   transform from the script; pips show per face from data-f. */
+/* Dice boxes: physical dice, one box per side behind a die icon in a bottom corner of the
+   screen (src/ui/dicebox.js), Ash left and Slate right. Dice are placed by transform from the
+   script; pips show per face from data-f. */
 .boardwrap { position: relative; }
+.dicedock { position: fixed; bottom: 16px; z-index: 40; display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
+.dicedock > * { pointer-events: auto; }
+.dicedock.s0 { left: 16px; align-items: flex-start; --side: #e0672f; }
+.dicedock.s1 { right: 16px; align-items: flex-end; --side: #5b93a6; }
+.diceicon { position: relative; width: 48px; height: 48px; padding: 8px; border-radius: 50%; background: #1c1814; border: 2px solid var(--side);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, .5); cursor: pointer; }
+.diceicon:hover { border-color: #fff; }
+.diceicon svg { width: 100%; height: 100%; display: block; }
+.diceicon svg rect { fill: var(--side); }
+.diceicon svg circle { fill: #1c1814; }
+.diceicon.on { background: var(--side); }
+.diceicon.on svg rect { fill: #1c1814; }
+.diceicon.on svg circle { fill: var(--side); }
+.dicebadge { position: absolute; top: -6px; right: -6px; font-size: 10px; font-weight: 700; line-height: 1; padding: 3px 5px; border-radius: 8px;
+  background: #e8e2d8; color: #1c120c; }
+.dicebadge:empty { display: none; }
+.dicedock.s1 .dicebadge { right: auto; left: -6px; }
 .dicemat {
-  position: absolute; left: 8px; bottom: 8px; z-index: 6; width: min(480px, calc(100% - 16px));
-  background: rgba(29, 25, 20, .94); border: 1px solid #3a332a; border-radius: 10px; padding: 6px 8px 8px;
+  position: relative; width: min(440px, calc(50vw - 24px));
+  background: rgba(29, 25, 20, .94); border: 1px solid #3a332a; border-top: 3px solid var(--side); border-radius: 10px; padding: 6px 8px 8px;
   box-shadow: 0 6px 24px rgba(0, 0, 0, .5); touch-action: none; user-select: none; -webkit-user-select: none;
 }
 .dicemat[hidden] { display: none; }
@@ -182,7 +183,12 @@ footer a { color: #b0764f; }
 .dmbar .mini { padding: 1px 7px; }
 .dmbar .dmend { margin-left: auto; }
 .dmtitle { font-family: "Big Shoulders", sans-serif; font-weight: 700; text-transform: uppercase;
-  letter-spacing: .12em; font-size: 12px; color: #9a9184; margin-right: 4px; }
+  letter-spacing: .12em; font-size: 12px; color: var(--side); margin-right: 4px; }
+.dmhitl { font-size: 11px; color: #b9ad9d; }
+.dmhit { background: #262019; color: #e8e2d8; border: 1px solid #3a332a; border-radius: 4px; font-size: 11px; }
+.dmsum { margin-top: 6px; font-size: 12px; color: #b9ad9d; min-height: 16px; }
+.dmsum b { color: #e8e2d8; }
+@media (max-width: 719px) { .dicemat { width: calc(100vw - 32px); } }
 .dmplay { display: flex; gap: 8px; height: 128px; }
 .dmfelt { flex: 1; position: relative; border-radius: 8px; border: 1px dashed #3d4a38;
   background: radial-gradient(ellipse at 50% 40%, #2c3a29, #1d261b); }
@@ -282,9 +288,6 @@ button.hbug:hover, button.hbug[aria-expanded=true] { border-color: #e0672f; colo
 .hudsheet { position: absolute; z-index: 6; bottom: 46px; left: 50%; transform: translateX(-50%); width: min(520px, calc(100% - 16px));
   background: #1d1914; border: 1px solid #3a332a; border-radius: 8px; padding: 8px 10px; }
 .hudsheet[hidden], .hudtip[hidden] { display: none; }
-/* the dice box sits bottom-left on the table: the score bug and its sheet step aside to the right */
-.boardwrap:has(.dicemat:not([hidden])) .hudbot { justify-content: flex-end; padding-right: 10px; z-index: 7; }
-.boardwrap:has(.dicemat:not([hidden])) .hudsheet { left: auto; right: 8px; transform: none; z-index: 7; }
 .hsheethead { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;
   font-family: "Big Shoulders", sans-serif; text-transform: uppercase; letter-spacing: .1em; font-size: 13px; color: #c9bfae; }
 .hcprow { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }

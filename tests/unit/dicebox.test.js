@@ -79,12 +79,19 @@ describe('the tray takes thrown dice', () => {
   });
   it('keeps the faces the box decided, and re-rolls only the dice thrown again', () => {
     tray.setRoll([6, 2, 4, 1], 0);
-    expect(tray.diceTray.dice).toEqual([6, 2, 4, 1]);
-    expect(tray.diceTray.who).toBe(0);
-    tray.rerollDice([1, 3], [5, 6]);
-    expect(tray.diceTray.dice).toEqual([6, 5, 4, 6]);
-    expect(tray.diceTray.rerolled).toEqual([1, 3]);
-    tray.rerollDice([9], [3]);           // no such die
-    expect(tray.diceTray.dice).toEqual([6, 5, 4, 6]);
+    expect(tray.diceTrays[0].dice).toEqual([6, 2, 4, 1]);
+    expect(tray.diceTrays[0].who).toBe(0);
+    tray.rerollDice(0, [1, 3], [5, 6]);
+    expect(tray.diceTrays[0].dice).toEqual([6, 5, 4, 6]);
+    expect(tray.diceTrays[0].rerolled).toEqual([1, 3]);
+    tray.rerollDice(0, [9], [3]);        // no such die
+    expect(tray.diceTrays[0].dice).toEqual([6, 5, 4, 6]);
+  });
+  it('keeps each side in its own tray, so both can roll at once', () => {
+    tray.setRoll([3, 3], 1, 'saves');
+    expect(tray.diceTrays[1]).toMatchObject({ who: 1, dice: [3, 3], label: 'saves' });
+    expect(tray.diceTrays[0].dice).toEqual([6, 5, 4, 6]);
+    tray.clearDice(0);
+    expect(tray.diceTrays.map(t => t.dice)).toEqual([[], [3, 3]]);
   });
 });

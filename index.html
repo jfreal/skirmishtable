@@ -28,7 +28,6 @@
     <div class="viewbar">
       <button id="view3d" class="mini active" title="The table in 3D — scanned TTS terrain where available. Drag operatives to move them; drag the table to orbit.">3D table</button>
       <button id="view2d" class="mini" title="Top-down map with the ruler and line-of-sight shadows">2D map</button>
-      <button id="dicebox" class="mini" title="Physical dice: pick them up, shake, drop them in the box">Dice box</button>
       <button id="view3dtop" class="mini" style="display:none" title="Look straight down at the table (click again for the angled view)">Top-down</button>
       <span id="ringpick" class="ringpick" style="display:none" title="Base ring styles to try: for ready operatives, and for the active one (selected or mid-activation)">
         <label>Ready <select id="ringready"></select></label>
@@ -66,11 +65,6 @@
         <button class="mini" id="reset">Reset</button>
         <button class="mini" id="rulerbtn" title="Free measurement: click two points">Ruler</button>
       </div>
-    </div>
-
-    <div class="panel">
-      <h2>Dice</h2>
-      <div id="dicetray"></div>
     </div>
 
     <div class="panel">
@@ -135,6 +129,14 @@
 <footer>
   Assisted-sandbox mock — the app measures, judges line of sight &amp; cover, and rolls the dice pipelines; players stay in charge of legality. Movement: drag an operative — the route auto-paths around or over terrain, drawn as its actual increments: straight steps of at most 1", direction changes only between steps; a hollow node marks a short step that still costs the full inch. On the Volkus maps every ruin is traced from its Tabletop Simulator scan at 0.1": walls, doorways, alcoves and the ground under upper floors (blue hatch) are real space, so you can nook an operative into terrain wherever a 28mm base actually fits — and cover is judged from the exact wall beside it. Walls vary in height along their length (darker = taller; hover for the height) — low broken stretches (green) are the cheap place to climb. Any wall or rubble can be climbed up and over, shown as amber rungs: it costs the climb up (at least 2"), the drop back down (the first 2" of a drop are free), and the distance across. Each operative carries an order token like the physical game: white spiked starburst = Engage (with a hot pulsing glow), white dome = Conceal; double-click an operative to flip its order. The token turns to its dark face when the operative is expended, and an operative's colour drains to grey once it has moved. Climbs spend Reposition/Charge movement only, never Dash — and if a climb won't fit with Reposition first, the planner automatically dashes first and saves the Reposition for the climb (spare dash inches at the wall are burned as "wait"). Hover any piece for its rules. Dragging past the Reposition allowance flows straight into the Dash (blue route turns violet at the handover) and costs both actions; the drag hard-stops at the combined limit. While an operative is selected or moving, walls and heavy terrain cast subtle shadows showing what it can't see; every enemy is marked with how a shot at it would be judged — green = clear shot, amber = valid but in cover, violet = obscured, dashed = not a valid target (Conceal + cover) or not visible — with the sight line that decides it (a dot marks where it crosses the cover), and the Valid shots panel lists them. Cover lines run from one point of the shooter's base (the best one for the shooter) to every part of the target's base: heavy terrain more than 1" from both obscures, any terrain within 1" of the target gives cover. While dragging, all of this previews from the landing spot, not the current position. Unofficial fan prototype; Kill Team © Games Workshop.
 </footer>
+</div>
+
+<!-- a dice box per side, behind a die icon in the bottom corners (src/ui/dicebox.js) -->
+<div class="dicedock s0" id="dicedock0">
+  <button class="diceicon" title="Ash dice box" aria-label="Ash dice box" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="4"/><circle cx="8" cy="8" r="1.6"/><circle cx="16" cy="8" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="8" cy="16" r="1.6"/><circle cx="16" cy="16" r="1.6"/></svg><span class="dicebadge"></span></button>
+</div>
+<div class="dicedock s1" id="dicedock1">
+  <button class="diceicon" title="Slate dice box" aria-label="Slate dice box" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="4"/><circle cx="8" cy="8" r="1.6"/><circle cx="16" cy="8" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="8" cy="16" r="1.6"/><circle cx="16" cy="16" r="1.6"/></svg><span class="dicebadge"></span></button>
 </div>
 
 <script type="module" src="/src/main.js"></script>

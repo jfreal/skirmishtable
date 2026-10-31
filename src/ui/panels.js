@@ -58,6 +58,7 @@ function doShoot() {
     notes.push("obscured: crits downgraded, one success discarded");
   }
   const dfn = rollDefence(state.target.save, shot.save);
+  showRoll(dfn.dice, state.target.save, state.target.team, `${state.target.name} saves${dfn.cover ? " (+cover)" : ""}`);
   if (dfn.cover) notes.push("cover save banked");
   let dCrit = dfn.crit, dNorm = dfn.norm;
   // resolve defence: crits block crits first, then normals; two normals stop a crit
@@ -88,6 +89,7 @@ function doFight() {
   const ra = rollAttack(wa.atk, effHit(state.sel, wa), wa.rules);
   const rb = rollAttack(wb.atk, effHit(state.target, wb), wb.rules);
   showRoll(ra.dice, effHit(state.sel, wa), state.sel.team, `${state.sel.name} fights`);
+  showRoll(rb.dice, effHit(state.target, wb), state.target.team, `${state.target.name} fights back`);
   // alternate resolution, both always strike (crits first), attacker starts
   let pools = [ {op:state.sel, foe:state.target, w:wa, crit:ra.crit, norm:ra.norm},
                 {op:state.target, foe:state.sel, w:wb, crit:rb.crit, norm:rb.norm} ];

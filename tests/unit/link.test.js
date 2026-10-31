@@ -3,7 +3,7 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import * as world from '../../src/engine/world.js';
 import { SOFT_MAX, decodeGame, encodeGame, packGame, unpackGame } from '../../src/net/link.js';
-import { cleanDice, cleanMinis, cleanMission, cleanOps, cleanTray } from '../../src/net/protocol.js';
+import { cleanDiceTrays, cleanMinis, cleanMission, cleanOps, cleanTray } from '../../src/net/protocol.js';
 import { TTS_OPS } from '../../src/data/tts-ops.js';
 
 beforeAll(() => world.initMaps());
@@ -21,7 +21,8 @@ function midGame(key = "v1") {
   return { rules: "killteam", map: key, mapName: world.MAP.name, ops,
     tray: { tp: 3, cp: [1, 4], vp: [5, 7] },
     minis: [{ team: "kasrkin", picks: { A1: 2, A2: 0, A3: 5 } }, { team: null, picks: {} }],
-    dice: { who: 1, label: "Shoot: Sarn at Vekk", hit: 4, dice: [1, 3, 4, 6, 6], rerolled: [1] },
+    dice: [{ who: 0, label: "", hit: 3, dice: [], rerolled: [] },
+           { who: 1, label: "Shoot: Sarn at Vekk", hit: 4, dice: [1, 3, 4, 6, 6], rerolled: [1] }],
     // a busy score sheet: cards picked, VP in every turning point, six markers dragged about
     mission: { set: 0, crit: 2, tac: [1, 4], primary: [0, 2],
       score: [0, 1].map(s => [0, 1, 2, 3].map(tp => [0, 1, 2].map(c => (s + tp + c) % 4))),
@@ -45,7 +46,7 @@ describe("share links", () => {
     expect(cleanOps(out.ops, world.OPS)).toEqual(g.ops);
     expect(cleanTray(out.tray, { tp: 1, cp: [3, 3], vp: [0, 0] })).toEqual(g.tray);
     expect(cleanMinis(out.minis, ["kasrkin"])).toEqual(g.minis);
-    expect(cleanDice(out.dice)).toEqual(g.dice);
+    expect(cleanDiceTrays(out.dice)).toEqual(g.dice);
     expect(cleanMission(out.mission, TTS_OPS)).toEqual(g.mission);
   });
 

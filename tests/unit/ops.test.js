@@ -1,6 +1,6 @@
 // Dice tray counting, and cleaning the dice and mission state that arrive from another browser.
 import { describe, it, expect } from 'vitest';
-import { cleanDice, cleanMission, updateProblem } from '../../src/net/protocol.js';
+import { cleanDice, cleanDiceTrays, cleanMission, updateProblem } from '../../src/net/protocol.js';
 import { TTS_OPS } from '../../src/data/tts-ops.js';
 
 const blank = () => ({ set: 0, crit: null, tac: [null, null], primary: [null, null],
@@ -25,6 +25,15 @@ describe('cleanDice', () => {
   it('keeps real dice and a sane target, drops the rest', () => {
     const d = cleanDice({ who: 1, label: 'B1 <b>shoots</b>', hit: 9, dice: [6, 7, 0, 3, 'x', 1], rerolled: [0, 9] });
     expect(d).toEqual({ who: 1, label: 'B1 bshoots/b', hit: 3, dice: [6, 3, 1], rerolled: [0] });
+  });
+  it('keeps a tray per side, each owned by its index', () => {
+    const t = cleanDiceTrays([{ who: 1, hit: 4, dice: [2, 6] }, { who: 0, dice: [5] }, { dice: [1] }]);
+    expect(t.map(x => [x.who, x.hit, x.dice])).toEqual([[0, 4, [2, 6]], [1, 3, [5]]]);
+  });
+  it("puts an old single tray in the side that rolled it", () => {
+    expect(cleanDiceTrays({ who: 1, hit: 5, dice: [3, 4], rerolled: [] }).map(x => x.dice)).toEqual([[], [3, 4]]);
+    expect(cleanDiceTrays({ who: null, dice: [6] }).map(x => x.dice)).toEqual([[6], []]);
+    expect(cleanDiceTrays(undefined).map(x => x.dice)).toEqual([[], []]);
   });
 });
 
