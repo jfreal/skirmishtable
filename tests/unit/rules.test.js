@@ -69,7 +69,7 @@ describe('Ashfall (house rules)', () => {
     expect([mv.climbUp(1), mv.climbDown(1), mv.climbCost(4)]).toEqual([3, 1, 4]);
   });
   it('32mm bases no longer fit the corner nook a 28mm base does', () => {
-    expect(grid.ptFree(12.05, 4.25)).toBe(false);
+    expect(grid.ptFree(12.18, 4.12)).toBe(false);          // where a 28mm base sits flush
   });
   it('wider cover range: terrain 2″ from the target still gives cover', () => {
     expect(rules.RULES.cover.range).toBe(2);

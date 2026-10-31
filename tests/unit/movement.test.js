@@ -62,8 +62,23 @@ describe('Volkus AO 1 (scanned terrain)', () => {
   it('walks into the stronghold corner nook', () => {
     const p = mv.findPath(10.71, 7.48, 12.05, 4.25, 0, 6, 9);
     expect(p.partial).toBeFalsy();
-    expect(total(p)).toBe(5);
+    expect(total(p)).toBe(4);
     expect(grid.ptFree(12.05, 4.25)).toBe(true);
+  });
+
+  it('a base presses half a cell into the traced outline, flush with the scanned wall', () => {
+    // a traced cell blocks if the model touches it anywhere, so the wall is half a cell in
+    const [x, y] = mv.nearestFree(12.45, 3.85), {G, GRES} = grid;
+    let edge = Infinity;
+    for (let j = Math.floor((y - 1) / GRES); j <= (y + 1) / GRES; j++)
+      for (let i = Math.floor((x - 1) / GRES); i <= (x + 1) / GRES; i++) {
+        const c = G.cls[j * G.nx + i];
+        if (c < 1 || c > 3) continue;
+        edge = Math.min(edge, Math.hypot(Math.max(i * GRES - x, 0, x - (i + 1) * GRES), Math.max(j * GRES - y, 0, y - (j + 1) * GRES)));
+      }
+    expect(grid.NAV_R - edge).toBeGreaterThan(0.03);
+    expect(grid.NAV_R - edge).toBeLessThan(0.08);
+    expect(grid.ptFree(12.18, 4.12)).toBe(true);
   });
 
   it('climbs over the low wall into the stronghold (2" up, nothing down)', () => {
