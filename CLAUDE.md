@@ -35,12 +35,20 @@ only to say what the app works with.
 
 ## Git workflow
 
-- Commit and merge **straight into `main`**. No feature branches or pull requests needed.
+Many sessions work on this repo at the same time, so changes go through pull requests.
+
+- **Never commit or push straight to `main`.** Start a branch from the latest `origin/main`
+  (a worktree session already has one).
 - Keep commits small and descriptive.
+- Before opening the PR, run `git fetch origin`, merge `origin/main` into the branch (a local
+  `main` may be stale) and run `npm test`.
+- Open the PR into `main` with `gh pr create`. Keep one PR to one change.
+- Don't merge the PR yourself unless John asks. Merging it deploys.
 
 ## Repo notes
 
-- Every push to `main` deploys to a **public** GitHub Pages site. The deploy also deletes
+- Every push to `main` (each merged PR) deploys to a **public** GitHub Pages site; the deploy
+  workflow can also be run by hand (`workflow_dispatch`). The deploy also deletes
   `dist/models/` and `dist/meshpack.json` in case a local pack is present; keep that step.
 - See `README.md` for setup and `docs/ARCHITECTURE.md` for how the code fits together.
 
