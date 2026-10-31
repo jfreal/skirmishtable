@@ -26,7 +26,9 @@ function pref(name, opts, dflt) {
 }
 export const setThreatStyle = pref("threatStyle", THREAT_STYLES, "bands");
 export const setThreatStrength = pref("threatStrength", THREAT_STRENGTHS, "soft");
-export const setThreatPaths = pref("threatPaths", PATH_STYLES, "flow");
+// still arrows by default for anyone who asked their system for reduced motion
+const calm = typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
+export const setThreatPaths = pref("threatPaths", PATH_STYLES, calm ? "arrow" : "flow");
 
 // the view-bar pickers; the key's tooltips spell out the reach under the rules in play
 export function wireThreatPicker(redraw) {
