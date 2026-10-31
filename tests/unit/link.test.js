@@ -26,7 +26,10 @@ function midGame(key = "v1") {
     // a busy score sheet: cards picked, VP in every turning point, six markers dragged about
     mission: { set: 0, crit: 2, tac: [1, 4], primary: [0, 2],
       score: [0, 1].map(s => [0, 1, 2, 3].map(tp => [0, 1, 2].map(c => (s + tp + c) % 4))),
-      markers: [0, 1, 2, 3, 4, 5].map(i => ({ id: i + 1, k: i % 3, x: 3.14159 * i + 1.0001, y: 2.71828 * i + 0.5003 })) } };
+      markers: [0, 1, 2, 3, 4, 5].map(i => ({ id: i + 1, k: i % 3, x: 3.14159 * i + 1.0001, y: 2.71828 * i + 0.5003 })),
+      notes: [[{ h: "Initiative", m: "+1", s: "this turning point", by: null }],
+              [{ h: "Strategic ploy", m: "Hold fast", s: "until end of TP 3", by: 0 }]],
+      noteEdit: "any" } };
 }
 const link = code => "https://jfreal.github.io/skirmishtable/#game=" + code;
 

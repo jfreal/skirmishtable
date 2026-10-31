@@ -246,6 +246,11 @@ Taken from how players run Kill Team in Tabletop Simulator:
   **markers** (grenades, mission tokens) to drop on the table. Cards are cut from the mod's own
   card sheets and load like the models (`src/data/tts-ops.js`, built by `npm run tts:ops`;
   links to the Steam CDN and imgur). Once a VP is entered the sheet keeps the tray's VP.
+- **Status cards** on each side's edge of the table: game-wide notes the players type
+  themselves (a header, a main line like "+1", a line of small text), for ploys in play,
+  initiative or a game state. The app stores the text and knows no rules. Shown as a chip per
+  card, or one drawer per side (Options). Each side edits its own; the host can let both edit
+  both, and a card changed by the other player says so.
 
 All of it is shared in online games (players set their own side; the host sets the season
 and Crit Op) and covered by Undo.

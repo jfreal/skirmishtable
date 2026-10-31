@@ -17,6 +17,7 @@ import { diceTrays, wireDice } from './ui/dicetray.js';
 import { wireDiceBox } from './ui/dicebox.js';
 import { wireOps } from './ui/ops.js';
 import { wireHud } from './ui/hud.js';
+import { wireStatusCards } from './ui/statuscards.js';
 import { wireShare } from './net/share.js';
 import { wireReplay } from './net/replayer.js';
 import { wireInput } from './ui/input.js';
@@ -48,6 +49,7 @@ renderMinis();
 wireDice(side => mayPlay() && (!online() || net.seat === side));   // a dice box per side: online, roll in your own
 wireDiceBox();
 wireOps(side => mayControl({ team: side }), maySetUp);   // online: your own side's ops; the host sets the mission
+wireStatusCards();
 wireNet();                      // host or join if the address says so (#host= / #room=)
 wireShare();                    // or open a shared snapshot (#game=)
 wireReplay();                   // record this game; or open a replay (#replay=)
