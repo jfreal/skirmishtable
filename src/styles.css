@@ -314,5 +314,5 @@ table.hscore tfoot td { font-size: 14px; padding-top: 3px; }
 /* the 2D map's "where is it?" burst */
 .flash2d circle { transform-box: fill-box; transform-origin: center; animation: flashring 1.6s ease-out both; }
 .flash2d circle.core { animation: flashcore 1.6s ease-in-out both; }
-@keyframes flashring { from { transform: scale(1); opacity: .7; } to { transform: scale(2.6); opacity: 0; } }
-@keyframes flashcore { 0%, 100% { opacity: 0; } 35% { opacity: .35; } }
+@keyframes flashring { from { transform: scale(1); opacity: .9; } to { transform: scale(3); opacity: 0; } }
+@keyframes flashcore { 0%, 100% { opacity: 0; } 20%, 60% { opacity: .5; } 40% { opacity: .3; } }
