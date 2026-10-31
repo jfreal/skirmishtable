@@ -14,6 +14,7 @@
 <header>
   <h1>Skirmish<span>Table</span></h1>
   <span class="hint" id="hint">Drag an operative to move — the app paths around or over terrain and prices the move by the current rules.</span>
+  <button id="panelbtn" class="mini" aria-controls="sidepanel" aria-expanded="false" title="Fold the side panel away so the table fills the screen (remembered in this browser)">Show panel</button>
   <button id="optionsbtn" class="mini" title="Settings, remembered in this browser">Options</button>
 </header>
 
@@ -39,6 +40,11 @@
         <label title="How the route each enemy could charge your landing spot along is drawn, moving from the enemy towards you">Charge paths <select id="threatpaths"></select></label>
         <span class="threatkey" id="threatkey"><i class="ch"></i>charge <i class="cl"></i>no cover</span>
       </span>
+      <span class="foldonly">
+        <button class="mini" data-press="endtp" title="Ready all operatives, next turning point">End TP</button>
+        <button class="mini" data-press="undo" title="Undo last committed action">Undo</button>
+        <button class="mini" data-press="rulerbtn" title="Free measurement: click two points">Ruler</button>
+      </span>
       <span class="hint" id="v3dnote"></span>
       <button id="loadtts" class="mini" style="display:none" title="Download the exact Tabletop Simulator scans and textures from the Steam Workshop CDN into this browser. This site doesn't host them.">Load from Steam</button>
     </div>
@@ -60,7 +66,7 @@
     </div>
   </div>
 
-  <aside>
+  <aside id="sidepanel">
     <div class="panel">
       <h2>Battle tray</h2>
       <div class="tray">

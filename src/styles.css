@@ -260,6 +260,13 @@ footer a { color: #b0764f; }
 .oprow { flex-wrap: wrap; }
 /* Wide screens: the table stays in view while the (long) side panel scrolls past it */
 @media (min-width: 900px) { .boardwrap { position: sticky; top: 8px; } }
+/* Side panel folded away (src/ui/sidepanel.js): the table takes the whole width, as wide as
+   still fits the window's height, and End TP / Undo / Ruler move up into the view bar */
+header #panelbtn { align-self: center; margin-left: auto; }
+.foldonly { display: none; gap: 6px; }
+.main.folded .foldonly { display: inline-flex; }
+.main.folded aside { display: none; }
+.main.folded .boardwrap { flex-basis: 100%; max-width: max(320px, var(--fitw, 100%)); margin: 0 auto; }
 
 /* ---------- board overlay (src/ui/hud.js): operative ribbon on top, score bug below ---------- */
 .stage { position: relative; }
