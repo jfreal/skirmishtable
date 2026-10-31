@@ -37,13 +37,15 @@ const kills = s => OPS.filter(o => o.team !== s && !o.alive).length;
 const esc = t => String(t).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 
 /* ---------- top ribbon ---------- */
+// a circle per operative: a pie of its wounds left (a sliver at the least while it stands),
+// in the team colour while ready, grey once expended; a soft cross once it's down
+const SOFT_X = '<svg class="hx" viewBox="0 0 10 10" aria-hidden="true"><path d="M3 3l4 4M7 3l-4 4"/></svg>';
 function square(op) {
-  const st = status(op), f = op.alive ? op.wounds / op.maxW : 0;
-  const wcls = f <= 0.25 ? "crit" : isInjured(op) ? "hurt" : "";
+  const st = status(op), hp = op.alive ? Math.max(0.08, op.wounds / op.maxW) : 0;
   return `<button class="hsq ${st}${state.sel && state.sel.id === op.id ? " sel" : ""}" data-oid="${op.id}" ` +
-    `style="--tc:${TEAMCOL[op.team]}" aria-label="${esc(op.id + " " + op.name + ", " + STATUS_LABEL[st])}">` +
-    (st === "dead" ? `<span class="hx">✕</span>` : "") +
-    `<i class="hw ${wcls}" style="width:${Math.round(100 * f)}%"></i></button>`;
+    `style="--tc:${TEAMCOL[op.team]};--hp:${hp.toFixed(3)}" ` +
+    `aria-label="${esc(`${op.id} ${op.name}, ${STATUS_LABEL[st]}${op.alive ? `, ${op.wounds}/${op.maxW} wounds` : ""}`)}">` +
+    (st === "dead" ? SOFT_X : "") + `</button>`;
 }
 function side(s) {
   const ops = OPS.filter(o => o.team === s), left = ops.filter(o => o.alive && o.ready).length;

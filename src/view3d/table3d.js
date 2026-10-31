@@ -761,42 +761,39 @@ export function sync3DOps() {
   setAnimating(anim);
   requestRender(true);
 }
-// "Where is it?": a pillar of light over an operative and a ring that runs out along the
-// table (picked from the board overlay), fading over a second and a half.
+// "Where is it?": a soft glow rising round an operative and a faint ring that runs out
+// along the table (picked from the board overlay); it swells and fades in under two seconds.
 let beamFade = null;
 export function flashOp3D(op) {
   if (!three || !view3D) return;
-  if (!beamFade) {           // white at the foot, clear at the top (alphaMap reads green)
+  if (!beamFade) {           // brightest at the foot, gone by the top (alphaMap reads green)
     const c = document.createElement("canvas"); c.width = 1; c.height = 64;
     const x = c.getContext("2d"), gr = x.createLinearGradient(0, 0, 0, 64);
-    gr.addColorStop(0, "#000"); gr.addColorStop(1, "#fff");
+    gr.addColorStop(0, "#000"); gr.addColorStop(0.55, "#1a1a1a"); gr.addColorStop(1, "#b0b0b0");
     x.fillStyle = gr; x.fillRect(0, 0, 1, 64);
     beamFade = new THREE.CanvasTexture(c);
   }
-  const BR = opR(op), col = lin(parseInt(TEAMCOL_LT[op.team].slice(1), 16)), H = 18;
-  const mat = (o, color = col) => new THREE.MeshBasicMaterial({color, transparent: true, opacity: o, alphaMap: beamFade,
+  const BR = opR(op), col = lin(parseInt(TEAMCOL_LT[op.team].slice(1), 16)), H = 5;
+  const glowMat = new THREE.MeshBasicMaterial({color: col, transparent: true, opacity: 0, alphaMap: beamFade,
     blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide});
   const g = new THREE.Group();
   g.position.set(op.x, op.z || 0, op.y);
-  const outer = new THREE.Mesh(geo("beam outer", () => new THREE.CylinderGeometry(1, 1, 1, 32, 1, true)), mat(0.55));
-  outer.scale.set(BR + 0.25, H, BR + 0.25); outer.position.y = H / 2;
-  const inner = new THREE.Mesh(outer.geometry, mat(0.9, lin(0xfff8e8)));
-  inner.scale.set(BR * 0.45, H, BR * 0.45); inner.position.y = H / 2;
-  const ringMat = new THREE.MeshBasicMaterial({color: col, transparent: true, opacity: 0.9, depthWrite: false, side: THREE.DoubleSide});
-  const ring = new THREE.Mesh(geo("beam ring", () => new THREE.RingGeometry(0.85, 1, 64)), ringMat);
+  const glow = new THREE.Mesh(geo("beam outer", () => new THREE.CylinderGeometry(1, 1, 1, 32, 1, true)), glowMat);
+  glow.scale.set(BR + 0.35, H, BR + 0.35); glow.position.y = H / 2;
+  const ringMat = new THREE.MeshBasicMaterial({color: col, transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide});
+  const ring = new THREE.Mesh(geo("beam ring", () => new THREE.RingGeometry(0.9, 1, 64)), ringMat);
   ring.rotation.x = -Math.PI / 2; ring.position.y = 0.06;
-  g.add(outer, inner, ring);
+  g.add(glow, ring);
   three.scene.add(g);
-  const t0 = performance.now(), T = 1500;
+  const t0 = performance.now(), T = 1800;
   const step = now => {
-    const t = Math.min(1, (now - t0) / T), fade = 1 - t * t;
-    outer.material.opacity = 0.55 * fade * (0.8 + 0.2 * Math.sin(t * 18));
-    inner.material.opacity = 0.9 * fade;
-    const r = BR + 0.3 + t * 3.5;
-    ring.scale.set(r, r, 1); ringMat.opacity = 0.9 * (1 - t);
+    const t = Math.min(1, (now - t0) / T), swell = Math.sin(Math.PI * t);   // 0 → 1 → 0
+    glowMat.opacity = 0.32 * swell;
+    const r = BR + 0.3 + t * 1.8;
+    ring.scale.set(r, r, 1); ringMat.opacity = 0.45 * swell;
     requestRender();
     if (t < 1 && three) return requestAnimationFrame(step);
-    three.scene.remove(g); outer.material.dispose(); inner.material.dispose(); ringMat.dispose();
+    three.scene.remove(g); glowMat.dispose(); ringMat.dispose();
     requestRender();
   };
   requestAnimationFrame(step);
