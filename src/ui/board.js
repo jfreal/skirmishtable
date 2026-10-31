@@ -2,7 +2,8 @@
  * SVG board rendering: terrain, objectives, operatives, shadows and the move overlay.
  */
 import { state } from '../state.js';
-import { CTRL, ENGAGE_COL, OBJ_R, TEAMCOL, TEAMGREY, TEAMNAME } from '../config.js';
+import { CTRL, ENGAGE_COL, OBJ_R, TEAMCOL, TEAMCOL_LT, TEAMGREY, TEAMNAME } from '../config.js';
+import { renderHud } from './hud.js';
 import { VOLKUS_PIECES } from '../data/volkus-pieces.js';
 import { isInjured } from '../engine/dice.js';
 import { blobPoints, dist, opR, perimeterPts, px, wallSegments } from '../engine/geometry.js';
@@ -491,6 +492,15 @@ export function renderOverlay(cursor) {
     }
   }
 }
+// "Where is it?": a burst of light on an operative's token (picked from the board overlay)
+export function flashOp2D(op) {
+  const g = el("g", {class: "flash2d", "pointer-events": "none"});
+  for (const [r, w, d] of [[opR(op) + 0.2, 4, 0], [opR(op) + 0.2, 2.5, 0.25], [opR(op) + 0.2, 1.5, 0.5]])
+    el("circle", {cx: px(op.x), cy: px(op.y), r: px(r), fill: "none", stroke: TEAMCOL_LT[op.team], "stroke-width": w,
+      style: `animation-delay:${d}s`}, g);
+  el("circle", {class: "core", cx: px(op.x), cy: px(op.y), r: px(opR(op) + 0.3), fill: "#fff8e8"}, g);
+  setTimeout(() => g.remove(), 1700);
+}
 export function renderTray() {
   document.getElementById("tpv").textContent = tray.tp;
   document.getElementById("cpa").textContent = tray.cp[0];
@@ -500,7 +510,7 @@ export function renderTray() {
 }
 export function renderAll(cursor) {
   refreshSight();               // the chosen target's call, as things stand after this change
-  renderObjectives(); renderOps(); renderOverlay(cursor); renderTray(); renderCard(); renderVerdict();
+  renderObjectives(); renderOps(); renderOverlay(cursor); renderTray(); renderCard(); renderVerdict(); renderHud();
   if (view3D && three) sync3DOps();
   pump();                       // online: send the game if this render follows a change
 }

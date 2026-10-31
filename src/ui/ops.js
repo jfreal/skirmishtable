@@ -157,10 +157,7 @@ export function renderOps() {
   });
   box.querySelectorAll(".opprim").forEach(e => e.onchange = () => { snapshot(); opsState.primary[+e.dataset.s] = e.value === "" ? null : +e.value; changed(); });
   box.querySelectorAll(".opvp").forEach(e => e.onchange = () => {
-    const s = +e.dataset.s, tp = +e.dataset.tp, c = +e.dataset.c, v = Math.max(0, Math.min(9, e.value | 0));
-    snapshot(); opsState.score[s][tp][c] = v;
-    logLine(`<b>${TEAMNAME[s]}</b> TP${tp + 1} ${COLS[c]} Op: ${v} VP (total ${scoreTotal(s)}).`);
-    changed(false);
+    setScore(+e.dataset.s, +e.dataset.tp, +e.dataset.c, e.value, false);
     box.querySelector("tfoot").innerHTML = `<tr><th>VP</th><td colspan="3"><b>${scoreTotal(0)}</b></td><td colspan="3"><b>${scoreTotal(1)}</b></td></tr>`;
   });
   box.querySelectorAll(".tok").forEach(b => b.onclick = () => {
@@ -172,6 +169,14 @@ export function renderOps() {
   box.querySelectorAll("[data-rm]").forEach(b => b.onclick = () => {
     snapshot(); opsState.markers = opsState.markers.filter(m => m.id !== +b.dataset.rm); changed();
   });
+}
+// one box of the score sheet (this panel's or the board overlay's)
+export const mayScore = s => mine(s);
+export function setScore(s, tp, c, value, render = true) {
+  const v = Math.max(0, Math.min(9, value | 0));
+  snapshot(); opsState.score[s][tp][c] = v;
+  logLine(`<b>${TEAMNAME[s]}</b> TP${tp + 1} ${COLS[c]} Op: ${v} VP (total ${scoreTotal(s)}).`);
+  changed(render);
 }
 // Esc / another mode clears a pending marker
 export function cancelMarker() { if (markerPick !== null) { markerPick = null; renderOps(); } }

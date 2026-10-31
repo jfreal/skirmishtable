@@ -41,8 +41,14 @@
       <span class="hint" id="v3dnote"></span>
       <button id="loadtts" class="mini" style="display:none" title="Download the exact Tabletop Simulator scans and textures from the Steam Workshop CDN into this browser. This site doesn't host them.">Load from Steam</button>
     </div>
-    <svg id="board" viewBox="0 0 960 704" aria-label="Top-down wargame table, 30 by 22 inches"></svg>
-    <div id="board3d"></div>
+    <div class="stage">
+      <svg id="board" viewBox="0 0 960 704" aria-label="Top-down wargame table, 30 by 22 inches"></svg>
+      <div id="board3d"></div>
+      <div class="hud hudtop" id="hudtop" aria-label="Operatives: click one to find it on the table"></div>
+      <div class="hud hudbot" id="hudbot"></div>
+      <div class="hudsheet" id="hudsheet" hidden></div>
+      <div class="hudtip" id="hudtip" role="tooltip" hidden></div>
+    </div>
   </div>
 
   <aside>

@@ -16,6 +16,7 @@ import { mayControl, mayPlay, maySetUp, net, online, wireNet } from './net/sync.
 import { wireDice } from './ui/dicetray.js';
 import { wireDiceBox } from './ui/dicebox.js';
 import { wireOps } from './ui/ops.js';
+import { wireHud } from './ui/hud.js';
 import { wireShare } from './net/share.js';
 import { wireInput } from './ui/input.js';
 import { wireThreatPicker } from './ui/threat.js';
@@ -25,6 +26,7 @@ import * as rules from './rules/index.js';
 import { onMinisChange } from './view3d/units.js';
 
 wireInput();
+wireHud();
 wireControls();
 table3d.wireViewToggle();
 wireThreatPicker(() => renderAll());
