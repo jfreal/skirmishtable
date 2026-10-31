@@ -9,6 +9,8 @@ export default defineConfig({
   use: {
     baseURL: 'http://localhost:4173',
     viewport: { width: 1440, height: 1000 },
+    // the side panel starts folded; the tests drive its buttons, so open it (src/ui/sidepanel.js)
+    storageState: { cookies: [], origins: [{ origin: 'http://localhost:4173', localStorage: [{ name: 'skirmishtable.sidebar', value: 'open' }] }] },
     launchOptions: process.env.PW_CHROMIUM_PATH ? { executablePath: process.env.PW_CHROMIUM_PATH } : {},
   },
   webServer: { command: 'npm run preview', url: 'http://localhost:4173', reuseExistingServer: !process.env.CI },

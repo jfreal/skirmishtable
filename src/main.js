@@ -22,6 +22,7 @@ import { wireReplay } from './net/replayer.js';
 import { wireInput } from './ui/input.js';
 import { wireThreatPicker } from './ui/threat.js';
 import { wireOptions } from './ui/options.js';
+import { wireSidePanel } from './ui/sidepanel.js';
 import * as table3d from './view3d/table3d.js';
 import * as rules from './rules/index.js';
 import { onMinisChange } from './view3d/units.js';
@@ -32,6 +33,7 @@ wireControls();
 table3d.wireViewToggle();
 wireThreatPicker(() => renderAll());
 wireOptions();
+wireSidePanel();
 onMinisChange(bases => { if (bases) { renderAll(); renderMinis(); } });   // a model measured: rings, reach and fit follow its base
 
 /* ---------- go ---------- */
