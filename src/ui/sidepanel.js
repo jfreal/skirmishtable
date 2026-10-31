@@ -13,8 +13,10 @@ function fit() {
   const main = document.querySelector(".main"), stage = document.querySelector(".stage");
   if (!main || !stage) return;
   const top = stage.getBoundingClientRect().top + window.scrollY;
-  const h = Math.max(240, window.innerHeight - top - 12);
-  main.style.setProperty("--fitw", Math.round(h * 960 / 704) + "px");
+  const h = Math.max(240, window.innerHeight - top - 12), w = Math.round(h * 960 / 704) + "px";
+  if (main.style.getPropertyValue("--fitw") === w) return false;
+  main.style.setProperty("--fitw", w);
+  return true;
 }
 
 function apply() {
@@ -35,5 +37,10 @@ export function wireSidePanel() {
   // the folded view bar's buttons press the Battle tray's own
   document.querySelectorAll("[data-press]").forEach(b => b.onclick = () => document.getElementById(b.dataset.press).click());
   window.addEventListener("resize", fit);
+  // the header and view bar change height too (3D controls appear, rows wrap, the replay bar opens)
+  if (window.ResizeObserver) {
+    const ro = new ResizeObserver(() => { if (fit()) window.dispatchEvent(new Event("resize")); });
+    ["header", ".viewbar", "#replaybar"].forEach(q => { const e = document.querySelector(q); if (e) ro.observe(e); });
+  }
   apply();
 }
