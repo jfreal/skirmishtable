@@ -6,7 +6,7 @@
 import { state } from '../state.js';
 import { CTRL, S } from '../config.js';
 import { dist, opGap, opR } from '../engine/geometry.js';
-import { chopIncrements, clampPath, opLayer, placeBlocked, planRoute, useBase } from '../engine/movement.js';
+import { chopIncrements, clampPath, nearestFree, opLayer, placeBlocked, planRoute, useBase } from '../engine/movement.js';
 import { LEVELS, layerZ, onLayer, ptFree } from '../engine/grid.js';
 import { foesNear } from '../engine/engage.js';
 import { BH, BW, OPS } from '../engine/world.js';
@@ -81,9 +81,12 @@ function goalLayer(op, gx, gy, hint, up) {
 function planDrag(x, y, hint, up) {
   const d = state.drag, R = opR(d.op);
   useBase(R);                                       // route, fit and collide this operative's own base
-  const gx = Math.min(BW - R, Math.max(R, x));
-  const gy = Math.min(BH - R, Math.max(R, y));
+  let gx = Math.min(BW - R, Math.max(R, x));
+  let gy = Math.min(BH - R, Math.max(R, y));
   const gl = goalLayer(d.op, gx, gy, hint, up);
+  // pointing into terrain or another base: land pressed up against it instead
+  const snap = nearestFree(gx, gy, d.op.id, gl), free = !!snap;
+  if (snap) [gx, gy] = snap;
   // Engagement range: a normal move can't go within control range of an enemy (planRoute
   // routes round it), so dragging there turns the move into a Charge (Move + 2″, 1AP) when
   // one is allowed. A Charge may enter one enemy's control range, then has to stay in it.
@@ -91,7 +94,6 @@ function planDrag(x, y, hint, up) {
   const charging = state.moveType === "charge" || (intoFoes && mayCharge(d.op));
   d.autoCharge = charging && state.moveType !== "charge";
   const plans = plansFor(d.op, charging ? "charge" : state.moveType);
-  const free = !placeBlocked(gx, gy, d.op.id, gl);
   let bestPlan = null;
   if (free) for (const pl of plans) {
     const raw = planRoute(d.op, gx, gy, pl.lo, pl.hi, pl.cap, pl.p1.type === "charge", gl);

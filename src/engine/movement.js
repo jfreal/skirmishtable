@@ -20,6 +20,32 @@ export function placeBlocked(x, y, excludeId, l = 0) {
   for (const o of OPS) if (o.alive && o.id !== excludeId && opLayer(o) === l && dist(x,y,o.x,o.y) < R + opR(o)) return {id:o.name};
   return null;
 }
+// The landing spot nearest (x, y) on layer l: (x, y) itself when the base fits there, else
+// the closest spot within maxR that does, so dragging into a wall or a corner presses the
+// base flush against it instead of refusing. null if nothing is that close.
+export function nearestFree(x, y, excludeId, l = 0, maxR = 1.5) {
+  if (!placeBlocked(x, y, excludeId, l)) return [x, y];
+  const cand = [], ri = Math.ceil(maxR / GRES);
+  for (let j = -ri; j <= ri; j++) for (let i = -ri; i <= ri; i++) {
+    const d = Math.hypot(i, j) * GRES;
+    if (d <= maxR) cand.push([d, x + i * GRES, y + j * GRES]);
+  }
+  cand.sort((a, b) => a[0] - b[0]);
+  // slide from each of the nearest free spots back towards (x, y) until the base touches
+  let best = null, bd = Infinity, tried = 0;
+  for (const [, cx, cy] of cand) {
+    if (placeBlocked(cx, cy, excludeId, l)) continue;
+    let lo = 0, hi = 1;
+    for (let n = 0; n < 16; n++) {
+      const t = (lo + hi) / 2;
+      if (placeBlocked(cx + (x - cx) * t, cy + (y - cy) * t, excludeId, l)) hi = t; else lo = t;
+    }
+    const px = cx + (x - cx) * lo, py = cy + (y - cy) * lo, d = dist(x, y, px, py);
+    if (d < bd) { bd = d; best = [px, py]; }
+    if (++tried >= 8) break;
+  }
+  return best;
+}
 
 /* ---------- auto-pathing on the grid ----------
    Any-angle search (Lazy Theta*) over the free cells, from the operative outwards,

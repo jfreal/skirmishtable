@@ -74,6 +74,31 @@ describe('Volkus AO 1 (scanned terrain)', () => {
     expect(climbs(dashFirst)).toEqual([2]);
     expect(total(dashFirst)).toBe(8);
   });
+
+  it('pointing into the corner presses the base flush into the nook', () => {
+    const [gx, gy] = [12.05 + 0.4, 4.25 - 0.4];         // past both walls of the corner
+    expect(mv.placeBlocked(gx, gy)).toBeTruthy();
+    const [x, y] = mv.nearestFree(gx, gy);
+    expect(mv.placeBlocked(x, y)).toBeNull();
+    expect(grid.clearAt(x, y) - grid.NAV_R).toBeLessThan(0.03);   // touching terrain
+    expect(Math.hypot(x - 12.05, y - 4.25)).toBeLessThan(0.2);
+    expect(mv.findPath(10.71, 7.48, x, y, 0, 6, 9).partial).toBeFalsy();
+  });
+
+  it('a bigger base presses flush too, just further out', () => {
+    const small = grid.NAV_R;
+    mv.useBase(0.787);                                    // 40mm
+    try {
+      const [x, y] = mv.nearestFree(12.05 + 0.4, 4.25 - 0.4);
+      expect(mv.placeBlocked(x, y)).toBeNull();
+      expect(grid.clearAt(x, y) - 0.787).toBeLessThan(0.03);
+    } finally { mv.useBase(small); }
+  });
+
+  it('a free spot is left alone; deep inside terrain gives nothing', () => {
+    expect(mv.nearestFree(12.05, 4.25)).toEqual([12.05, 4.25]);
+    expect(mv.nearestFree(12.05 + 3, 4.25 - 3, undefined, 0, 0.2)).toBeNull();
+  });
 });
 
 describe('random routes on every map are legal', () => {
