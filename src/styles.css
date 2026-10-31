@@ -247,3 +247,76 @@ footer a { color: #b0764f; }
 .oprow { flex-wrap: wrap; }
 /* Wide screens: the table stays in view while the (long) side panel scrolls past it */
 @media (min-width: 900px) { .boardwrap { position: sticky; top: 8px; } }
+
+/* ---------- board overlay (src/ui/hud.js): operative ribbon on top, score bug below ---------- */
+.stage { position: relative; }
+.hud { position: absolute; left: 0; right: 0; z-index: 5; pointer-events: none; font-size: 11px; color: #9a9184; }
+.hud > * { pointer-events: auto; }
+.hudtop { top: 0; height: 32px; padding: 0 10px; display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  background: rgba(20, 17, 14, .68); border-radius: 6px 6px 0 0; }
+.hside { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.hside.s1 { flex-direction: row-reverse; }
+.hname { font-family: "Big Shoulders", sans-serif; font-weight: 700; font-size: 14px; letter-spacing: .04em; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis; max-width: 140px; }
+.hsqs { display: flex; gap: 5px; }
+.hside.s1 .hsqs { flex-direction: row-reverse; }
+.hleft, .hmid { white-space: nowrap; }
+button.hsq { position: relative; width: 16px; height: 16px; padding: 0; border-radius: 3px; border: 2px solid var(--tc);
+  background: var(--tc); cursor: pointer; }
+button.hsq:hover { border-color: #fff; }
+button.hsq.active { background: #fff; border-color: #fff; animation: hsqpulse 1.2s ease-in-out infinite; }
+button.hsq.spent { background: transparent; border-color: #6b6357; }
+button.hsq.dead { background: #2a1a16; border-color: #5a3a32; }
+button.hsq.sel { outline: 2px solid #fff; outline-offset: 2px; }
+button.hsq::after { content: ""; position: absolute; left: -2px; right: -2px; bottom: -7px; height: 3px; background: #2e2921; border-radius: 2px; }
+.hsq .hw { position: absolute; left: -2px; bottom: -7px; height: 3px; background: #6faf82; border-radius: 2px; z-index: 1; max-width: calc(100% + 4px); }
+.hsq .hw.hurt { background: #d3a04a; } .hsq .hw.crit { background: #cf4f37; }
+.hsq.spent .hw { opacity: .6; }
+.hsq .hx { position: absolute; inset: -6px; display: flex; align-items: center; justify-content: center; color: #e0302a;
+  font-size: 19px; font-weight: 700; line-height: 1; text-shadow: 0 0 2px #14110e; }
+@keyframes hsqpulse { 50% { background: var(--tc); } }
+.hudbot { bottom: 10px; display: flex; justify-content: center; }
+button.hbug { display: flex; align-items: center; gap: 10px; background: rgba(20, 17, 14, .72); border: 1px solid transparent;
+  border-radius: 6px; padding: 3px 12px; color: #e8e2d8; }
+button.hbug:hover, button.hbug[aria-expanded=true] { border-color: #e0672f; color: #e8e2d8; }
+.hbug .hcp, .hbug .htp { font-size: 11px; color: #9a9184; }
+.hbug .htp { border-left: 1px solid #3a332a; padding-left: 10px; }
+.hbug .hvp { font-family: "Big Shoulders", sans-serif; font-size: 20px; font-weight: 700; display: flex; gap: 6px; }
+.hbug .hvp i { color: #6b6357; font-style: normal; }
+.hudsheet { position: absolute; z-index: 6; bottom: 46px; left: 50%; transform: translateX(-50%); width: min(520px, calc(100% - 16px));
+  background: #1d1914; border: 1px solid #3a332a; border-radius: 8px; padding: 8px 10px; }
+.hudsheet[hidden], .hudtip[hidden] { display: none; }
+/* the dice box sits bottom-left on the table: the score bug and its sheet step aside to the right */
+.boardwrap:has(.dicemat:not([hidden])) .hudbot { justify-content: flex-end; padding-right: 10px; z-index: 7; }
+.boardwrap:has(.dicemat:not([hidden])) .hudsheet { left: auto; right: 8px; transform: none; z-index: 7; }
+.hsheethead { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;
+  font-family: "Big Shoulders", sans-serif; text-transform: uppercase; letter-spacing: .1em; font-size: 13px; color: #c9bfae; }
+.hcprow { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+.hcpctl { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+.hcpctl button.mini { padding: 0 7px; }
+.hkills { color: #e0573f; margin-left: 4px; }
+table.hscore { width: 100%; border-collapse: collapse; font-size: 11px; text-align: center; }
+table.hscore th { color: #9a9184; font-weight: 400; padding: 1px 2px; }
+table.hscore tr.now th { color: #e8e2d8; }
+table.hscore input { width: 34px; background: #262019; color: #e8e2d8; border: 1px solid #3a332a; border-radius: 4px; text-align: center;
+  font-family: inherit; font-size: 12px; }
+table.hscore tfoot td { font-size: 14px; padding-top: 3px; }
+.hudtip { position: absolute; z-index: 7; width: 250px; pointer-events: none; background: #14110e; border: 1px solid #3a332a;
+  border-radius: 6px; padding: 7px 9px; font-size: 11px; color: #c9bfae; line-height: 1.4; }
+.hudtip .tn { font-family: "Big Shoulders", sans-serif; font-weight: 800; font-size: 16px; text-transform: uppercase; letter-spacing: .03em; }
+.hudtip .tk { color: #9a9184; margin-bottom: 4px; }
+.hudtip .tk b { font-weight: 600; } .hudtip .tk .ready { color: #6faf82; } .hudtip .tk .active { color: #fff; }
+.hudtip .tk .dead { color: #e0302a; }
+.hudtip .ts { display: flex; gap: 10px; margin-bottom: 4px; } .hudtip .ts b { color: #e8e2d8; font-size: 13px; }
+.hudtip .tw { display: flex; justify-content: space-between; gap: 8px; } .hudtip .tw span:last-child { color: #9a9184; white-space: nowrap; }
+.hudtip .tnote { margin-top: 4px; color: #b8ad9e; border-top: 1px solid #2e2921; padding-top: 4px; }
+@media (max-width: 760px) {
+  .hname, .hmid, .hleft { display: none; }
+  .hudtop { justify-content: space-around; }
+  .hsqs { gap: 4px; } button.hsq { width: 13px; height: 13px; }
+}
+/* the 2D map's "where is it?" burst */
+.flash2d circle { transform-box: fill-box; transform-origin: center; animation: flashring 1.4s ease-out both; }
+.flash2d circle.core { animation: flashcore 1.4s ease-out both; }
+@keyframes flashring { from { transform: scale(1); opacity: 1; } to { transform: scale(4); opacity: 0; } }
+@keyframes flashcore { from { opacity: .9; } to { opacity: 0; } }
