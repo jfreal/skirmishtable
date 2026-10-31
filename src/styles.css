@@ -312,7 +312,7 @@ table.hscore tfoot td { font-size: 14px; padding-top: 3px; }
   .hsqs { gap: 4px; } button.hsq { width: 15px; height: 15px; }
 }
 /* the 2D map's "where is it?" burst */
-.flash2d circle { transform-box: fill-box; transform-origin: center; animation: flashring 1.6s ease-out both; }
+.flash2d circle { transform-box: fill-box; transform-origin: center; opacity: 0; animation: flashring 1.6s ease-out forwards; }
 .flash2d circle.core { animation: flashcore 1.6s ease-in-out both; }
 @keyframes flashring { from { transform: scale(1); opacity: .9; } to { transform: scale(3); opacity: 0; } }
 @keyframes flashcore { 0%, 100% { opacity: 0; } 20%, 60% { opacity: .5; } 40% { opacity: .3; } }
