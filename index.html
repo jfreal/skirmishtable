@@ -56,6 +56,9 @@
       <div class="hud hudbot" id="hudbot"></div>
       <div class="hudsheet" id="hudsheet" hidden></div>
       <div class="hudtip" id="hudtip" role="tooltip" hidden></div>
+      <!-- each side's status cards on its own edge of the table (src/ui/statuscards.js) -->
+      <div class="scards s0" id="scards0" aria-label="Ash status cards"></div>
+      <div class="scards s1" id="scards1" aria-label="Slate status cards"></div>
       <!-- a dice box per side, behind a die icon in the bottom corners of the table (src/ui/dicebox.js) -->
       <div class="dicedock s0" id="dicedock0">
         <button class="diceicon" title="Ash dice box" aria-label="Ash dice box" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="4"/><circle cx="8" cy="8" r="1.6"/><circle cx="16" cy="8" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="8" cy="16" r="1.6"/><circle cx="16" cy="16" r="1.6"/></svg><span class="dicebadge"></span></button>

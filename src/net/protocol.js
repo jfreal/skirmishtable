@@ -52,6 +52,8 @@ export function updateProblem(prev, next, seat) {
     if (b.set !== a.set || b.crit !== a.crit) return "only the host sets the season and Crit Op";
     const mineOnly = k => JSON.stringify((b[k] || [])[other]) !== JSON.stringify((a[k] || [])[other]);
     if (["tac", "primary", "score"].some(mineOnly)) return "the other side's ops and score belong to the other player";
+    if ((b.noteEdit || "own") !== (a.noteEdit || "own")) return "only the host sets who edits status cards";
+    if (a.noteEdit !== "any" && mineOnly("notes")) return "the other side's status cards belong to the other player";
   }
   return null;
 }
@@ -85,7 +87,15 @@ export function cleanMission(m, catalog) {
     && Number.isFinite(k.x) && Number.isFinite(k.y) && Number.isInteger(k.id))
     .map(k => ({ id: k.id, k: k.k, x: k.x, y: k.y })) : [];
   return { set, crit: idx(m && m.crit, s.crit.length), tac: pair(m && m.tac, s.tac.length),
-           primary: pair(m && m.primary, 3), score, markers };
+           primary: pair(m && m.primary, 3), score, markers,
+           notes: [0, 1].map(i => cleanNotes(m && m.notes && m.notes[i])), noteEdit: m && m.noteEdit === "any" ? "any" : "own" };
+}
+// A side's status cards: up to 12, each three short lines of the players' own text.
+const NOTE_LEN = { h: 30, m: 24, s: 90 };
+const line = (v, n) => typeof v === "string" ? v.replace(/[\u0000-\u001f]/g, " ").slice(0, n) : "";
+export function cleanNotes(list) {
+  return Array.isArray(list) ? list.slice(0, 12).filter(n => n && typeof n === "object").map(n => ({
+    h: line(n.h, NOTE_LEN.h), m: line(n.m, NOTE_LEN.m), s: line(n.s, NOTE_LEN.s), by: n.by === 0 || n.by === 1 ? n.by : null })) : [];
 }
 
 /* ---------- cleaning incoming data ---------- */

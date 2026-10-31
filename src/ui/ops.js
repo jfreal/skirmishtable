@@ -19,7 +19,10 @@ import { snapshot, tray, undoExtras } from './panels.js';
 
 const COLS = ["Crit", "Tac", "Kill"];
 const blankScore = () => [0, 1].map(() => [0, 1, 2, 3].map(() => [0, 0, 0]));
-export const opsState = { set: 0, crit: null, tac: [null, null], primary: [null, null], score: blankScore(), markers: [] };
+// notes: each side's status cards on the board edges ({h header, m main, s small text,
+// by: the side that last changed it, when not its own}); noteEdit: "own" or "any" side may edit them
+export const opsState = { set: 0, crit: null, tac: [null, null], primary: [null, null], score: blankScore(), markers: [],
+                          notes: [[], []], noteEdit: "own" };
 const listeners = [];
 export const onOpsChange = fn => listeners.push(fn);
 function changed(render = true) {
@@ -177,6 +180,19 @@ export function setScore(s, tp, c, value, render = true) {
   snapshot(); opsState.score[s][tp][c] = v;
   logLine(`<b>${TEAMNAME[s]}</b> TP${tp + 1} ${COLS[c]} Op: ${v} VP (total ${scoreTotal(s)}).`);
   changed(render);
+}
+// status cards: your own side's, or both when the host has said anyone may edit them
+export const mayNote = s => opsState.noteEdit === "any" ? mine(0) || mine(1) : mine(s);
+export const mayNoteSetUp = () => host();
+export function setNotes(s, list, line) {
+  snapshot(); opsState.notes[s] = list;
+  if (line) logLine(line);
+  changed(false);
+}
+export function setNoteEdit(v) {
+  snapshot(); opsState.noteEdit = v === "any" ? "any" : "own";
+  logLine(`Status cards: ${opsState.noteEdit === "any" ? "either player may edit both sides" : "each player edits their own side"}.`);
+  changed(false);
 }
 // Esc / another mode clears a pending marker
 export function cancelMarker() { if (markerPick !== null) { markerPick = null; renderOps(); } }

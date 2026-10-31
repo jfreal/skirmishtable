@@ -20,6 +20,7 @@ import { flashOp2D, renderAll } from './board.js';
 import { capName, logLine } from './dom.js';
 import { cancelMode, defaultMoveType, snapshot, tray } from './panels.js';
 import { mayScore, opsState, scoreTotal, setScore } from './ops.js';
+import { renderStatusCards } from './statuscards.js';
 
 const COLS = ["Crit", "Tac", "Kill"];
 let sheetOpen = false;
@@ -120,6 +121,7 @@ export function renderHud() {
   if (bot._html !== b) { bot.innerHTML = b; bot._html = b; }
   sh.hidden = !sheetOpen;
   if (sheetOpen && !sh.contains(document.activeElement)) sh.innerHTML = sheet();
+  renderStatusCards();
 }
 // pick an operative from the ribbon, as clicking it on the table does, and show where it is
 function pick(oid) {
