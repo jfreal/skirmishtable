@@ -18,8 +18,8 @@ import { TTS_OPS } from '../data/tts-ops.js';
 import { hint } from '../ui/dom.js';
 import { armDrag, setBoardPicker } from '../ui/input.js';
 import { SHOT_KINDS, shotsFrom } from '../engine/shots.js';
-import { lineBlocked, visibilityPolygon } from '../engine/sight.js';
-import { opR, perimeterPts } from '../engine/geometry.js';
+import { coneShadows, sightCone, visibilityPolygon } from '../engine/sight.js';
+import { opR } from '../engine/geometry.js';
 import { addModels, ensureManifest, hasModels, progress, retryFailed, setRedraw, steamBytes, steamRemembered, useSteamSource } from './models.js';
 import { onMinisChange, unitObject } from './units.js';
 import { options } from '../ui/options.js';
@@ -286,16 +286,15 @@ function sightShade(g, eye) {
   shade.rotation.x = -Math.PI / 2; shade.position.y = 0.03; shade.renderOrder = 2;
   g.add(shade);
   // every enemy, marked as on the 2D map: ring colour = the judgement (thick = valid
-  // target, thin = not), the deciding sight line, where it crosses the cover, and a tag
+  // target, thin = not), the sight cone, where its deciding line crosses the cover, and a
+  // tag. The chosen target's cone is drawn bolder by targetLines.
+  const chosen = state.lastShot && !eye.landing ? state.target : null;
   for (const sh of shotsFrom(eye)) {
     const o = sh.target, hex = parseInt(SHOT_COL[sh.kind].slice(1), 16), valid = SHOT_KINDS[sh.kind].valid;
     const halo = new THREE.Mesh(torus(opR(o) + 0.22, valid ? 0.08 : 0.035, 40), flatMat(hex, valid ? 1 : 0.75));
     halo.rotation.x = Math.PI / 2; halo.position.set(o.x, (o.z || 0) + 0.08, o.y);
     g.add(halo);
-    if (sh.line) {
-      const [[ax, ay], [bx, by]] = sh.line;
-      ribbon(g, ax, ay, 0.6, bx, by, 0.6, valid ? 0.05 : 0.025, hex);
-    }
+    if (sh.line && o !== chosen) coneOnTable(g, sh.sight.from, o, hex, false);
     const hit = shotHit(sh);
     if (hit) dot(g, hit.at[0], hit.at[1], 0.6, 0.12, hex);
     const tag = shotTag(sh.kind);
@@ -316,19 +315,45 @@ function shotTag(kind) {
   s.scale.copy(t.scale); s.renderOrder = 10;
   return s;
 }
-// the chosen target's cover lines: every line from the attacker's best base point to the
-// target's base, green where clear and red where terrain blocks it (as on the 2D map)
+// the chosen target's sight cone, drawn bolder than the others (as on the 2D map)
 function targetLines(g) {
-  const s = state.lastShot.sight, [ax, ay] = s.from, pts = [], cols = [];
-  const ok = new THREE.Color(0x5fae4c), bad = new THREE.Color(0xcf4f37);
-  for (const [bx, by] of perimeterPts(state.target, 24, opR(state.target) - 0.02)) {
-    const c = lineBlocked(ax, ay, bx, by) ? bad : ok;
-    pts.push(ax, 0.6, ay, bx, 0.6, by); cols.push(c.r, c.g, c.b, c.r, c.g, c.b);
+  const s = state.lastShot.sight;
+  if (s.visible) coneOnTable(g, s.from, state.target, parseInt(SHOT_COL[state.lastShot.kind].slice(1), 16), true);
+}
+// A sight cone laid on the table, as on the 2D map: a tinted fan from the shooter's chosen
+// base point (from) to the whole of o's base, the slices terrain blocks shaded dark.
+const coneMat = {};
+function coneMesh(g, pts, hex, opacity, order) {
+  const k = hex + "/" + opacity;
+  if (!coneMat[k]) {
+    coneMat[k] = new THREE.MeshBasicMaterial({color: lin(hex), transparent: true, opacity, side: THREE.DoubleSide, depthWrite: false});
+    coneMat[k].userData.shared = true;
   }
   const geo = new THREE.BufferGeometry();
   geo.setAttribute("position", new THREE.Float32BufferAttribute(pts, 3));
-  geo.setAttribute("color", new THREE.Float32BufferAttribute(cols, 3));
-  g.add(new THREE.LineSegments(geo, new THREE.LineBasicMaterial({vertexColors: true, transparent: true, opacity: 0.8})));
+  const m = new THREE.Mesh(geo, coneMat[k]);
+  m.renderOrder = order;
+  g.add(m);
+}
+function coneOnTable(g, [ax, ay], o, hex, strong) {
+  const rays = sightCone(ax, ay, o);
+  if (!rays) return;
+  const h = 0.6, fan = [], dark = [];
+  for (let i = 0; i + 1 < rays.length; i++) {
+    const r = rays[i], s = rays[i + 1];
+    fan.push(ax, h, ay, ax + r.ux * r.far, h, ay + r.uy * r.far, ax + s.ux * s.far, h, ay + s.uy * s.far);
+  }
+  // each shadow polygon is its stop points, then its far points backwards: quads between
+  for (const p of coneShadows(ax, ay, rays)) {
+    const m = p.length / 2, v = q => dark.push(q[0], h + 0.01, q[1]);
+    for (let k = 0; k + 1 < m; k++) {
+      const a = p[k], b = p[k + 1], c = p[2 * m - 2 - k], d = p[2 * m - 1 - k];
+      v(a); v(b); v(c); v(a); v(c); v(d);
+    }
+  }
+  coneMesh(g, fan, hex, strong ? 0.35 : 0.2, 3);
+  if (dark.length) coneMesh(g, dark, 0x0b0806, strong ? 0.55 : 0.4, 4);
+  dot(g, ax, ay, h, strong ? 0.12 : 0.08, hex);
 }
 const ENGAGE_HEX = parseInt(ENGAGE_COL.slice(1), 16);
 const TRAIL_HEX = 0xe8822e;   // faint orange: the base's path and its outline per increment
@@ -497,7 +522,7 @@ export function sync3DOverlay() {
     g.add(label);
     if (threat && d.path) threatGhost(g, threat.at, d.goal, BR, gz, threat.routes);
   }
-  // the chosen target: the sight line the engine found, green, or a red line if none
+  // the chosen target: its sight cone, and the terrain that gives it cover or obscures it
   if (state.sel && state.target && state.target.alive && state.lastShot) {
     const s = state.lastShot.sight;
     targetLines(g);

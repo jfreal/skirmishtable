@@ -245,6 +245,12 @@ to the target's model.
    box for the feature closest to the target (what the UI highlights; its `id` names the piece),
    the crossing point `at`, and the cover `line` that decides it.
 
+**Sight cones.** The 2D map and the 3D table draw each shot as a cone from the chosen point to
+the whole target base, not a single line. `sightCone(ax, ay, b)` fans 33 rays between the two
+tangents to b's base and notes where walls or heavy terrain stop each one short of the base;
+`coneShadows` turns the stopped runs into polygons, shaded dark on the cone. The cone is only a
+picture: the call itself is still `sightAnalysis`'s.
+
 ## Valid shots (`engine/shots.js`)
 
 First the shooter: `cannotShoot(eye)` says why the operative can't take a Shoot action at all,
@@ -338,7 +344,7 @@ These were all verified against the official map cards (`tools/verify_maps.py`):
 pointerdown raycast against the operative meshes (so OrbitControls never starts an orbit), and
 swaps in a board picker that intersects the pointer ray with the table plane. The planner is
 unchanged; `sync3DOverlay()` draws its result (ribbons per increment, climb arcs, ghost, label)
-and the current sight line. `boardToScreen(x, y, z)` projects board inches for the browser tests.
+and the current sight cone. `boardToScreen(x, y, z)` projects board inches for the browser tests.
 
 **Exact models.** When `models/manifest.json` exists (built by `tools/model_pack.py`),
 `view3d/models.js` draws every object of a Volkus layout bag as TTS models it: full-resolution
@@ -355,8 +361,8 @@ without the pack fall back to the decimated `meshpack.json`, then to extruded fo
 
 **Sight on the table.** With an operative selected (or a drag ghost), `sightShade` lays a dark
 sheet over the table with the `visibilityPolygon` cut out, so what it can't see is shaded,
-exactly as on the 2D map; every enemy gets a ring, tag and deciding line in the colour of its
-shot call (see Valid shots), and the selected target gets its sight lines and the cover terrain. The rules are the
+exactly as on the 2D map; every enemy gets a ring, tag and sight cone in the colour of its
+shot call (see Valid shots), and the selected target gets a bolder cone and the cover terrain. The rules are the
 same 2D line-of-sight judgement — the models are the picture, the 0.1" grid is the rules.
 
 three.js r128 and OrbitControls load from CDNs as globals.

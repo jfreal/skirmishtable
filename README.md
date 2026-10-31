@@ -86,7 +86,7 @@ resolution with its original texture, the rubble and fire-step asset bundles, th
 objective markers, each placed with its full TTS position, rotation, scale and tint, with
 shadows. Select an operative and the table shades everything it **can't see**, the same
 visibility as the 2D map, and rings each enemy it can see (faintly if that enemy is in cover);
-click an enemy to draw the sight line and the terrain giving cover. Gallowdark walls are TTS
+click an enemy to draw its sight cone (dark where terrain blocks it) and the terrain giving cover. Gallowdark walls are TTS
 asset bundles too but aren't packed yet; those maps use simple walls. The **2D map** keeps the
 ruler. Without WebGL or the three.js CDN the page falls back to the 2D map.
 
