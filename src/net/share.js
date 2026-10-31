@@ -11,6 +11,7 @@ import { undoStack } from '../ui/panels.js';
 import { savePicture } from '../ui/picture.js';
 import { SOFT_MAX, decodeGame, encodeGame, isGameHash } from './link.js';
 import { applyGame, leaveGame, online, outGame } from './sync.js';
+import { leaveReplay, restartRecording } from './replayer.js';
 
 let lastLink = "", status = "";
 const when = at => at ? new Date(at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "an unknown time";
@@ -42,23 +43,29 @@ export function renderShare() {
   box.querySelector("#picbtn").onclick = () => savePicture().catch(e => hint("Couldn't save the picture: " + e.message));
 }
 
+// Why this version can't open a game from a link or file (null = it can)
+export function gameProblem(g) {
+  if (!RULESETS[g.rules]) return "its rules aren't in this version of SkirmishTable";
+  if (!MAPS[g.map] && !(/^imp/.test(g.map) && g.mapDef && typeof g.mapDef === "object")) return "its map isn't in this version of SkirmishTable";
+  return null;
+}
 // Open "#game=…" from the address: a fresh local game, then the address goes back to plain.
 export async function openSharedGame(hash = location.hash) {
   if (!isGameHash(hash)) return false;
   const r = await decodeGame(hash);
   history.replaceState(null, "", base());
   const g = r.game;
-  let why = r.error;
-  if (!why && !RULESETS[g.rules]) why = "its rules aren't in this version of SkirmishTable";
-  if (!why && !MAPS[g.map] && !(/^imp/.test(g.map) && g.mapDef && typeof g.mapDef === "object")) why = "its map isn't in this version of SkirmishTable";
+  const why = r.error || gameProblem(g);
   if (why) {
     status = "Couldn't open that shared game: " + why + ".";
     hint(status); renderShare();
     return false;
   }
   if (online()) leaveGame();
+  leaveReplay();                             // a game on the table replaces any replay
   applyGame(g);
   undoStack.length = 0;                      // a fresh game: nothing from before to undo
+  restartRecording();
   status = `Opened a shared game from ${when(g.at)}. It's a snapshot: play on from here, or Host a game to play it online.`;
   logLine(`<b>Shared game:</b> ${status.replace(/[<>&"]/g, "")}`);
   hint(status); renderShare();
