@@ -13,10 +13,12 @@ import { build3DScene, setView, three, view3D } from '../view3d/table3d.js';
 import { syncBases } from '../view3d/units.js';
 import { RULES, RULESETS, fmtIn, setRuleset } from '../rules/index.js';
 import { mayPlay, maySetUp, pump, requestUndo } from '../net/sync.js';
+import { restartRecording } from '../net/replayer.js';
 
 // online, only the host sets up the table and only the two players act
-const setupOnly = () => { if (maySetUp()) return false; hint("Online, only the host changes the map, rules or resets."); return true; };
-const playOnly = () => { if (mayPlay()) return false; hint("You're watching — only the two players can do that."); return true; };
+const REPLAYING = "You're watching a replay — press Play on from here, or Leave replay.";
+const setupOnly = () => { if (maySetUp()) return false; hint(state.replay ? REPLAYING : "Online, only the host changes the map, rules or resets."); return true; };
+const playOnly = () => { if (mayPlay()) return false; hint(state.replay ? REPLAYING : "You're watching — only the two players can do that."); return true; };
 
 // Demo set-up (for now): most operatives start scattered over the board, mostly near
 // cover, instead of in their drop zones. ?deploy=zones in the address turns it off.
@@ -29,6 +31,7 @@ export function loadMap(keyOrMap) {
   svg.setAttribute("viewBox", `0 0 ${px(BW)} ${px(BH)}`);
   state.sel = null; state.target = null; state.lastShot = null; state.drag = null;
   undoStack.length = 0;
+  restartRecording();             // a new table is a new game to record
   Object.assign(tray, {tp:1, cp:[3,3], vp:[0,0]});
   cancelMode();
   buildStatic();

@@ -11,7 +11,7 @@
 export const LINK_V = 1;
 export const SOFT_MAX = 2000;            // characters a link can have and still survive most chat apps
 const HARD_MAX = 200000;                 // refuse to decode anything bigger
-const OP_KEYS = ["id", "x", "y", "wounds", "ap", "order", "ready", "alive", "weapon", "used", "z"];
+export const OP_KEYS = ["id", "x", "y", "wounds", "ap", "order", "ready", "alive", "weapon", "used", "z"];
 
 export function packGame(g, at = Date.now()) {
   const { ops, ...rest } = g;
@@ -54,10 +54,19 @@ function fromB64url(t) {
   return Uint8Array.from(s, c => c.charCodeAt(0));
 }
 
+// any JSON value <-> deflated base64url text (share links and replays)
+export async function zipJSON(obj) {
+  return toB64url(await pipe(new TextEncoder().encode(JSON.stringify(obj)), new CompressionStream("deflate-raw")));
+}
+// throws on damaged text or once the unpacked JSON passes limit bytes
+export async function unzipJSON(text, limit) {
+  const bytes = await pipe(fromB64url(text), new DecompressionStream("deflate-raw"), limit);
+  return JSON.parse(new TextDecoder().decode(bytes));
+}
+
 // game (exportGame/outGame shape) -> "1.xxxx", the part after "#game="
 export async function encodeGame(g, at) {
-  const json = new TextEncoder().encode(JSON.stringify(packGame(g, at)));
-  return LINK_V + "." + toB64url(await pipe(json, new CompressionStream("deflate-raw")));
+  return LINK_V + "." + await zipJSON(packGame(g, at));
 }
 // "#game=1.xxxx" (or just "1.xxxx") -> { game } or { error: "why, in plain words" }
 export async function decodeGame(hash) {
@@ -67,8 +76,7 @@ export async function decodeGame(hash) {
   if (m[2].length > HARD_MAX) return { error: "it is too big" };
   let p;
   try {
-    const bytes = await pipe(fromB64url(m[2]), new DecompressionStream("deflate-raw"), HARD_MAX * 20);
-    p = JSON.parse(new TextDecoder().decode(bytes));
+    p = await unzipJSON(m[2], HARD_MAX * 20);
   } catch (e) {
     return { error: "the link is damaged (it may have been cut short)" };
   }

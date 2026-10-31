@@ -20,6 +20,8 @@ main.js ──► ui/*, view3d/table3d ──► engine/* ──► rules/*, dat
 - `net/*` is online play (see `docs/MULTIPLAYER.md`): `renderAll()` ends with `pump()`, which
   sends the whole game when it changed; `protocol.js` is pure and unit-tested.
   Share links (`link.js` pure, `share.js` the button) pack the same game into `#game=…`.
+  Replays (`replay.js` pure, `replayer.js` the recorder and viewer) record that game after
+  every change and pack the steps into `#replay=…`.
 - The code came from a single-file prototype and keeps its terse style. Comments explain the
   rules reasoning where it isn't obvious.
 

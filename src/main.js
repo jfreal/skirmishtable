@@ -18,6 +18,7 @@ import { wireDiceBox } from './ui/dicebox.js';
 import { wireOps } from './ui/ops.js';
 import { wireHud } from './ui/hud.js';
 import { wireShare } from './net/share.js';
+import { wireReplay } from './net/replayer.js';
 import { wireInput } from './ui/input.js';
 import { wireThreatPicker } from './ui/threat.js';
 import { wireOptions } from './ui/options.js';
@@ -48,6 +49,7 @@ wireDiceBox();
 wireOps(side => mayControl({ team: side }), maySetUp);   // online: your own side's ops; the host sets the mission
 wireNet();                      // host or join if the address says so (#host= / #room=)
 wireShare();                    // or open a shared snapshot (#game=)
+wireReplay();                   // record this game; or open a replay (#replay=)
 if (window.THREE && THREE.OrbitControls) table3d.setView(true);   // the 3D table is the default view
 
 // Debug/test handle: live views of the engine modules and UI state, for the browser
