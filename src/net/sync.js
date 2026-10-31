@@ -15,8 +15,8 @@ import { hint, logEl, logHooks, logLine, logRemote } from '../ui/dom.js';
 import { renderMinis } from '../ui/minis.js';
 import { doUndo, refreshSight, snapshot, tray } from '../ui/panels.js';
 import { minis, onMinisChange, setMinisSides } from '../view3d/units.js';
-import { cleanDice, cleanMinis, cleanMission, cleanOps, cleanStrings, cleanTray, newRoomCode, parseRoomHash, pickSeat, updateProblem } from './protocol.js';
-import { diceTray, onDiceChange, renderDice, setDiceTray } from '../ui/dicetray.js';
+import { cleanDiceTrays, cleanMinis, cleanMission, cleanOps, cleanStrings, cleanTray, newRoomCode, parseRoomHash, pickSeat, updateProblem } from './protocol.js';
+import { exportDice, onDiceChange, renderDice, setDiceTray } from '../ui/dicetray.js';
 import { onOpsChange, opsState, renderOps, setOpsState } from '../ui/ops.js';
 import { TTS_OPS } from '../data/tts-ops.js';
 import { closeRoom, openRoom, selfId, send } from './session.js';
@@ -40,7 +40,7 @@ const imported = k => /^imp/.test(k || "");
 export function exportGame() {
   return { rules: RULES.id, map: mapKey(), mapName: MAP && MAP.name, ops: OPS,
            tray: { tp: tray.tp, cp: [...tray.cp], vp: [...tray.vp] }, minis: minis.sides,
-           dice: { who: diceTray.who, label: diceTray.label, hit: diceTray.hit, dice: [...diceTray.dice], rerolled: [...diceTray.rerolled] },
+           dice: exportDice(),
            mission: JSON.parse(JSON.stringify(opsState)) };
 }
 const sig = g => JSON.stringify(g);
@@ -69,7 +69,7 @@ export function applyGame(g) {
     const m = cleanMinis(g.minis, TTS_TEAMS.map(t => t.id));
     if (JSON.stringify(m) !== JSON.stringify(minis.sides)) setMinisSides(m);
     renderMinis();
-    if (g.dice) setDiceTray(cleanDice(g.dice));
+    if (g.dice) setDiceTray(cleanDiceTrays(g.dice));
     if (g.mission) setOpsState(cleanMission(g.mission, TTS_OPS));
     renderAll();
   } finally {

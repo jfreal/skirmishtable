@@ -4,7 +4,7 @@ import { test, expect } from '@playwright/test';
 
 const ops = page => page.evaluate(() => skirmishtable.world.OPS.map(o =>
   ({ id: o.id, x: o.x, y: o.y, wounds: o.wounds, alive: o.alive, order: o.order, ready: o.ready, used: o.used })));
-const dice = page => page.evaluate(() => [...document.querySelectorAll('#dicetray .die')].map(d => d.textContent).join(''));
+const dice = page => page.evaluate(() => skirmishtable.diceTrays[0].dice.join(''));
 
 test('a shared link opens the same table in another page', async ({ context }) => {
   const errors = [];
@@ -26,7 +26,10 @@ test('a shared link opens the same table in another page', async ({ context }) =
   await a.locator('#endtp').click();
   await expect(a.locator('#tpv')).toHaveText('2');
   // dice in the tray, mission cards and a score on the Ops & score sheet
-  await a.locator('#dicetray [data-n="5"]').click();
+  await a.locator('#dicedock0 .diceicon').click();
+  await a.locator('#dicemat0 [data-n="5"]').click();
+  await a.locator('#dicemat0 .dmthrow').click();
+  await expect.poll(() => dice(a), { timeout: 10000 }).toHaveLength(5);
   await a.locator('#opcrit').selectOption({ index: 3 });
   await a.locator('.optac[data-s="1"]').selectOption({ index: 2 });
   await a.locator('.opvp[data-s="1"][data-tp="0"][data-c="1"]').fill('3');

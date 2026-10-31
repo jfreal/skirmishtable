@@ -66,6 +66,13 @@ export function cleanDice(d) {
     rerolled: Array.isArray(d && d.rerolled) ? d.rerolled.filter(i => Number.isInteger(i) && i >= 0 && i < dice.length).slice(0, 20) : [],
   };
 }
+// Both sides' dice trays. An old single tray (links from before there were two) lands in
+// the side that rolled it.
+export function cleanDiceTrays(d) {
+  if (Array.isArray(d)) return [0, 1].map(s => ({ ...cleanDice(d[s]), who: s }));
+  const one = cleanDice(d), s = one.who === 1 ? 1 : 0;
+  return [0, 1].map(i => i === s ? { ...one, who: s } : cleanDice({ who: i }));
+}
 // The mission and score sheet: indexes into the card catalog, small whole-number VP,
 // markers by token index and board position.
 export function cleanMission(m, catalog) {

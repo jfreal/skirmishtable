@@ -65,12 +65,20 @@ test('dice, mission cards, score and markers are shared', async ({ context }) =>
   await guest.goto(await host.locator('#netlink').inputValue());
   await expect(guest.locator('#netbox')).toContainText('you: Slate');
 
-  // the guest's roll shows, sorted the same, in the host's tray
-  await guest.locator('#dicetray [data-n="4"]').click();
-  const dice = await guest.evaluate(() => [...document.querySelectorAll('#dicetray .die')].map(d => d.textContent).join(''));
-  expect(dice).toHaveLength(4);
-  await expect.poll(() => host.evaluate(() => [...document.querySelectorAll('#dicetray .die')].map(d => d.textContent).join(''))).toBe(dice);
-  await expect(host.locator('#dicetray .dsum')).toContainText('Slate');
+  // the guest plays Slate: its dice box is bottom-right, and Ash's is look-only for it.
+  // Its throw lands in the host's Slate box, which opens to show it.
+  const tray = (p, s) => p.evaluate(s => skirmishtable.diceTrays[s].dice.join(''), s);
+  await guest.locator('#dicedock1 .diceicon').click();
+  await guest.locator('#dicemat1 [data-n="4"]').click();
+  await guest.locator('#dicemat1 .dmthrow').click();
+  await expect.poll(() => tray(guest, 1), { timeout: 10000 }).toHaveLength(4);
+  const dice = await tray(guest, 1);
+  await expect.poll(() => tray(host, 1)).toBe(dice);
+  await expect(host.locator('#dicemat1')).toBeVisible();
+  await expect(host.locator('#dicemat1 .dmsum')).toContainText('crit');
+  await expect(host.locator('#dicemat1 [data-n="2"]')).toBeDisabled();
+  await guest.locator('#dicedock0 .diceicon').click();
+  await expect(guest.locator('#dicemat0 [data-n="2"]')).toBeDisabled();
 
   // the host sets the Crit Op; the guest can't, but picks and scores its own Tac Op
   await host.locator('#opcrit').selectOption({ index: 3 });

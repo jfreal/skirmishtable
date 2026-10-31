@@ -13,7 +13,7 @@ import { loadMap, useRuleset, wireControls } from './ui/controls.js';
 import { logLine } from './ui/dom.js';
 import { renderMinis } from './ui/minis.js';
 import { mayControl, mayPlay, maySetUp, net, online, wireNet } from './net/sync.js';
-import { wireDice } from './ui/dicetray.js';
+import { diceTrays, wireDice } from './ui/dicetray.js';
 import { wireDiceBox } from './ui/dicebox.js';
 import { wireOps } from './ui/ops.js';
 import { wireHud } from './ui/hud.js';
@@ -42,8 +42,7 @@ logLine("Rules: Kill Team (2024). The Rules panel switches to an Infinity-style 
 logLine("Try: drag an operative on the 3D table — over a wall it climbs, into a nook it fits. Drag empty table to orbit; Top-down looks straight down.");
 renderAll();
 renderMinis();
-// dice are rolled for your side online; offline, for the selected operative's side
-wireDice(() => online() ? net.seat : (state.sel ? state.sel.team : null), mayPlay);
+wireDice(side => mayPlay() && (!online() || net.seat === side));   // a dice box per side: online, roll in your own
 wireDiceBox();
 wireOps(side => mayControl({ team: side }), maySetUp);   // online: your own side's ops; the host sets the mission
 wireNet();                      // host or join if the address says so (#host= / #room=)
@@ -52,4 +51,4 @@ if (window.THREE && THREE.OrbitControls) table3d.setView(true);   // the 3D tabl
 
 // Debug/test handle: live views of the engine modules and UI state, for the browser
 // console and the Playwright tests (e.g. skirmishtable.movement.findPath(...)).
-window.skirmishtable = { world, grid, movement, sight, rules, table3d, state, loadMap, useRuleset, renderAll };
+window.skirmishtable = { world, grid, movement, sight, rules, table3d, state, loadMap, useRuleset, renderAll, diceTrays };
