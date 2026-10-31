@@ -14,6 +14,7 @@ import { logLine } from './ui/dom.js';
 import { renderMinis } from './ui/minis.js';
 import { mayControl, mayPlay, maySetUp, net, online, wireNet } from './net/sync.js';
 import { wireDice } from './ui/dicetray.js';
+import { wireDiceBox } from './ui/dicebox.js';
 import { wireOps } from './ui/ops.js';
 import { wireShare } from './net/share.js';
 import { wireInput } from './ui/input.js';
@@ -39,6 +40,7 @@ renderAll();
 renderMinis();
 // dice are rolled for your side online; offline, for the selected operative's side
 wireDice(() => online() ? net.seat : (state.sel ? state.sel.team : null), mayPlay);
+wireDiceBox();
 wireOps(side => mayControl({ team: side }), maySetUp);   // online: your own side's ops; the host sets the mission
 wireNet();                      // host or join if the address says so (#host= / #room=)
 wireShare();                    // or open a shared snapshot (#game=)

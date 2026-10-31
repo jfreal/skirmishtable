@@ -156,6 +156,52 @@ footer a { color: #b0764f; }
 .dsum { display: flex; align-items: center; gap: 8px; font-size: 13px; }
 .dsum .mini { margin-left: auto; }
 .woundbtns { margin-top: 2px; }
+/* Dice box: physical dice on a mat over the table (src/ui/dicebox.js). Dice are placed by
+   transform from the script; pips show per face from data-f. */
+.boardwrap { position: relative; }
+.dicemat {
+  position: absolute; left: 8px; bottom: 8px; z-index: 6; width: min(480px, calc(100% - 16px));
+  background: rgba(29, 25, 20, .94); border: 1px solid #3a332a; border-radius: 10px; padding: 6px 8px 8px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, .5); touch-action: none; user-select: none; -webkit-user-select: none;
+}
+.dicemat[hidden] { display: none; }
+.dmbar { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin-bottom: 6px; }
+.dmbar .mini { padding: 1px 7px; }
+.dmbar .dmend { margin-left: auto; }
+.dmtitle { font-family: "Big Shoulders", sans-serif; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .12em; font-size: 12px; color: #9a9184; margin-right: 4px; }
+.dmplay { display: flex; gap: 8px; height: 128px; }
+.dmfelt { flex: 1; position: relative; border-radius: 8px; border: 1px dashed #3d4a38;
+  background: radial-gradient(ellipse at 50% 40%, #2c3a29, #1d261b); }
+.dmfelt::after { content: attr(data-hint); position: absolute; left: 6px; right: 6px; bottom: 5px; text-align: center;
+  font-size: 10px; line-height: 1.2; color: #78846f; pointer-events: none; }
+.dmbox { flex: 0 0 46%; border-radius: 8px; border: 7px solid #6b4426; background: #3a1d1a;
+  box-shadow: inset 0 3px 12px rgba(0, 0, 0, .7), 0 2px 0 #3e2614; transition: border-color .12s; }
+.dmbox.armed { border-color: #c98a45; }
+.dmslots { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; margin-top: 8px; height: 66px; }
+.dmslot { border-radius: 6px; background: #171410; border: 1px solid #2e2921; font-size: 10px; line-height: 13px; color: #8d8276; text-align: center; }
+.dmslot.crit { border-color: #8a6a1f; } .dmslot.hit { border-color: #31402f; }
+.dmdice { position: absolute; inset: 0; pointer-events: none; }
+.mdie {
+  position: absolute; left: 0; top: 0; width: 22px; height: 22px; padding: 3px; border-radius: 5px;
+  display: grid; grid-template: repeat(3, 1fr) / repeat(3, 1fr);
+  background: #ece4d4; box-shadow: inset -2px -2px 0 rgba(0, 0, 0, .18), 0 2px 3px rgba(0, 0, 0, .5);
+  pointer-events: auto; cursor: grab; will-change: transform; touch-action: none;
+}
+.mdie i { width: 4px; height: 4px; border-radius: 50%; background: #1c120c; place-self: center; visibility: hidden; }
+.mdie[data-f="1"] i:nth-child(5),
+.mdie[data-f="2"] i:is(:nth-child(1), :nth-child(9)),
+.mdie[data-f="3"] i:is(:nth-child(1), :nth-child(5), :nth-child(9)),
+.mdie[data-f="4"] i:is(:nth-child(1), :nth-child(3), :nth-child(7), :nth-child(9)),
+.mdie[data-f="5"] i:is(:nth-child(1), :nth-child(3), :nth-child(5), :nth-child(7), :nth-child(9)),
+.mdie[data-f="6"] i:is(:nth-child(1), :nth-child(3), :nth-child(4), :nth-child(6), :nth-child(7), :nth-child(9)) { visibility: visible; }
+.mdie.held { z-index: 3; cursor: grabbing; box-shadow: inset -2px -2px 0 rgba(0, 0, 0, .18), 0 9px 12px rgba(0, 0, 0, .55); }
+.mdie.crit { background: #e0a82e; } .mdie.hit { background: #6faf82; }
+.mdie.miss { background: #4a4139; } .mdie.miss i { background: #d8cfc2; }
+.mdie.sel { outline: 2px solid #4f8fd6; outline-offset: 1px; }
+.mdie.drop { animation: mdrop .3s ease-out; }
+@keyframes mdrop { from { translate: 0 -16px; opacity: 0; } to { translate: 0 0; opacity: 1; } }   /* translate adds to the inline transform; scale would grow from the layer's corner */
+.dmlasso { position: absolute; border: 1px dashed #4f8fd6; background: rgba(79, 143, 214, .12); pointer-events: none; }
 /* Ops & score panel: mission cards (cut from the mod's card sheets), score sheet, markers */
 .oprow { align-items: center; font-size: 12px; }
 .oprow label, .opside label { display: flex; align-items: center; gap: 4px; }

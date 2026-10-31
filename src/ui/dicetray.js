@@ -10,10 +10,15 @@ import { logLine } from './dom.js';
 
 // who rolled (side 0/1 or null), what for, the target number and the dice in roll order
 export const diceTray = { who: null, label: "", hit: 3, dice: [], rerolled: [] };
-const listeners = [];
+let mySide = () => null, canRoll = () => true;
+const listeners = [], renders = [];
 export const onDiceChange = fn => listeners.push(fn);
+// every redraw, local or from the network: the dice box follows the tray
+export const onDiceRender = fn => renders.push(fn);
 function changed() { renderDice(); for (const fn of listeners) fn(); }
 
+export const mySideNow = () => mySide();
+export const mayRoll = () => canRoll();
 export const tally = (dice, hit) => ({
   crit: dice.filter(v => v === 6).length,
   norm: dice.filter(v => v !== 6 && v !== 1 && v >= hit).length,
@@ -21,10 +26,14 @@ export const tally = (dice, hit) => ({
 const fmt = (dice, hit) => dice.map(v => v === 6 ? `<span class="crit">6</span>` : v >= hit && v !== 1 ? `${v}` : `<span class="dice">${v}</span>`).join(" ");
 
 export function rollDice(n, who, label = "") {
+  setRoll(Array.from({ length: Math.max(1, Math.min(20, n)) }, d6), who, label);
+}
+// a roll whose dice were already thrown (the dice box decides them as they leave the hand)
+export function setRoll(values, who, label = "") {
   diceTray.who = who; diceTray.label = label;
-  diceTray.dice = Array.from({ length: Math.max(1, Math.min(20, n)) }, d6);
+  diceTray.dice = values.slice(0, 20);
   diceTray.rerolled = [];
-  const t = tally(diceTray.dice, diceTray.hit);
+  const n = diceTray.dice.length, t = tally(diceTray.dice, diceTray.hit);
   logLine(`${who === 0 || who === 1 ? `<b>${TEAMNAME[who]}</b> rolls` : "Roll:"} ${n}D (${diceTray.hit}+)${label ? " " + label : ""} — ` +
     `[${fmt(diceTray.dice, diceTray.hit)}] → <b>${t.crit} crit, ${t.norm} hit</b>`);
   changed();
@@ -34,13 +43,16 @@ export function showRoll(dice, hit, who, label) {
   Object.assign(diceTray, { dice: [...dice], hit, who, label, rerolled: [] });
   changed();
 }
-export function rerollDie(i) {
-  if (!(i >= 0 && i < diceTray.dice.length)) return;
-  const was = diceTray.dice[i];
-  diceTray.dice[i] = d6();
-  diceTray.rerolled = [...new Set([...diceTray.rerolled, i])];
+export function rerollDie(i) { rerollDice([i], [d6()]); }
+// re-roll several dice at once (picked up out of their slots and thrown again): one log line
+export function rerollDice(idx, values) {
+  const ok = idx.map((i, k) => [i, values[k]]).filter(([i]) => i >= 0 && i < diceTray.dice.length);
+  if (!ok.length) return;
+  const was = ok.map(([i]) => diceTray.dice[i]);
+  for (const [i, v] of ok) diceTray.dice[i] = v;
+  diceTray.rerolled = [...new Set([...diceTray.rerolled, ...ok.map(([i]) => i)])];
   const t = tally(diceTray.dice, diceTray.hit);
-  logLine(`Re-roll: ${was} → <b>${diceTray.dice[i]}</b> · now [${fmt(diceTray.dice, diceTray.hit)}] → <b>${t.crit} crit, ${t.norm} hit</b>`);
+  logLine(`Re-roll: ${was.join(" ")} → <b>${ok.map(([, v]) => v).join(" ")}</b> · now [${fmt(diceTray.dice, diceTray.hit)}] → <b>${t.crit} crit, ${t.norm} hit</b>`);
   changed();
 }
 export function setHit(h) { diceTray.hit = Math.max(2, Math.min(6, h | 0)); changed(); }
@@ -48,12 +60,12 @@ export function clearDice() { Object.assign(diceTray, { dice: [], rerolled: [], 
 // replace the tray from the network (already cleaned)
 export function setDiceTray(d) { Object.assign(diceTray, d); renderDice(); }
 
-let mySide = () => null, canRoll = () => true;
 export function wireDice(sideFn, allowFn) {
   mySide = sideFn; canRoll = allowFn;
   renderDice();
 }
 export function renderDice() {
+  for (const fn of renders) fn();
   const box = document.getElementById("dicetray");
   if (!box) return;
   const t = tally(diceTray.dice, diceTray.hit), off = canRoll() ? "" : " disabled";
@@ -70,7 +82,7 @@ export function renderDice() {
     <div class="dgrid">${faces}</div>
     <div class="dsum">${diceTray.dice.length
       ? `${diceTray.who === 0 || diceTray.who === 1 ? TEAMNAME[diceTray.who] + " · " : ""}${diceTray.label ? diceTray.label + " · " : ""}<b>${t.crit}</b> crit · <b>${t.norm}</b> hit · ${diceTray.dice.length - t.crit - t.norm} miss`
-      : `<span class="hint">Roll dice, or Shoot / Fight; click a die to re-roll it.</span>`}
+      : `<span class="hint">Quick roll, or Shoot / Fight; click a die to re-roll it. Dice box (on the table): pick up, shake, throw.</span>`}
       ${diceTray.dice.length ? `<button class="mini" id="diceclear"${off}>Clear</button>` : ""}</div>`;
   box.querySelectorAll("[data-n]").forEach(b => b.onclick = () => rollDice(+b.dataset.n, mySide()));
   box.querySelectorAll(".die").forEach(b => b.onclick = () => rerollDie(+b.dataset.i));
