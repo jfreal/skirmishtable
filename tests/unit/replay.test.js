@@ -13,7 +13,7 @@ function startGame(key = "v1") {
   return { rules: "killteam", map: key, mapName: world.MAP.name, ops: clone(world.OPS),
     tray: { tp: 1, cp: [3, 3], vp: [0, 0] },
     minis: [{ team: null, picks: {} }, { team: null, picks: {} }],
-    dice: { who: null, label: "", hit: 3, dice: [], rerolled: [] },
+    dice: [0, 1].map(who => ({ who, label: "", hit: 3, dice: [], rerolled: [] })),
     mission: { set: 0, crit: null, tac: [null, null], primary: [null, null], score: [[], []], markers: [] } };
 }
 // four turning points: every operative moves (long decimals, as dragged), a third of them
@@ -30,8 +30,8 @@ function playGame(rec, g) {
         const t = g.ops[(i + 7) % g.ops.length];
         t.wounds = Math.max(0, t.wounds - 3); if (!t.wounds) t.alive = false;
         o.ap -= 1; o.used.push("shoot");
-        g.dice = { who: o.team, label: `${o.name} shoots`, hit: 3, dice: [1 + i % 6, 6, 4, 2], rerolled: [] };
-        addStep(rec, g, [`${o.name} shoots ${t.name} with ${o.weapon} — atk [${g.dice.dice.join(" ")}] def [5 2 3] → 3 dmg`]); n++;
+        g.dice[o.team] = { who: o.team, label: `${o.name} shoots`, hit: 3, dice: [1 + i % 6, 6, 4, 2], rerolled: [] };
+        addStep(rec, g, [`${o.name} shoots ${t.name} with ${o.weapon} — atk [${g.dice[o.team].dice.join(" ")}] def [5 2 3] → 3 dmg`]); n++;
       }
     });
     if (tp < 4) {
