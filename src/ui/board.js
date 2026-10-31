@@ -495,11 +495,11 @@ export function renderOverlay(cursor) {
 // "Where is it?": a burst of light on an operative's token (picked from the board overlay)
 export function flashOp2D(op) {
   const g = el("g", {class: "flash2d", "pointer-events": "none"});
-  for (const [r, w, d] of [[opR(op) + 0.2, 4, 0], [opR(op) + 0.2, 2.5, 0.25], [opR(op) + 0.2, 1.5, 0.5]])
+  for (const [r, w, d] of [[opR(op) + 0.2, 2.5, 0], [opR(op) + 0.2, 1.5, 0.3]])
     el("circle", {cx: px(op.x), cy: px(op.y), r: px(r), fill: "none", stroke: TEAMCOL_LT[op.team], "stroke-width": w,
       style: `animation-delay:${d}s`}, g);
-  el("circle", {class: "core", cx: px(op.x), cy: px(op.y), r: px(opR(op) + 0.3), fill: "#fff8e8"}, g);
-  setTimeout(() => g.remove(), 1700);
+  el("circle", {class: "core", cx: px(op.x), cy: px(op.y), r: px(opR(op) + 0.3), fill: TEAMCOL_LT[op.team]}, g);
+  setTimeout(() => g.remove(), 2000);
 }
 export function renderTray() {
   document.getElementById("tpv").textContent = tray.tp;

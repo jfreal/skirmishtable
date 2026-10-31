@@ -261,20 +261,16 @@ footer a { color: #b0764f; }
 .hsqs { display: flex; gap: 5px; }
 .hside.s1 .hsqs { flex-direction: row-reverse; }
 .hleft, .hmid { white-space: nowrap; }
-button.hsq { position: relative; width: 16px; height: 16px; padding: 0; border-radius: 3px; border: 2px solid var(--tc);
-  background: var(--tc); cursor: pointer; }
+/* --hp: the share of wounds left, drawn as a pie from 12 o'clock */
+button.hsq { position: relative; width: 18px; height: 18px; padding: 0; border-radius: 50%; border: 2px solid var(--tc); --fill: var(--tc);
+  background: conic-gradient(var(--fill) 0 calc(var(--hp) * 360deg), #2a2520 0); cursor: pointer; }
 button.hsq:hover { border-color: #fff; }
-button.hsq.active { background: #fff; border-color: #fff; animation: hsqpulse 1.2s ease-in-out infinite; }
-button.hsq.spent { background: transparent; border-color: #6b6357; }
-button.hsq.dead { background: #2a1a16; border-color: #5a3a32; }
+button.hsq.active { border-color: #fff; animation: hsqpulse 1.2s ease-in-out infinite; }
+button.hsq.spent { border-color: #6b6357; --fill: #8a8174; }
+button.hsq.dead { border-color: #4a3f36; background: #231e19; }
 button.hsq.sel { outline: 2px solid #fff; outline-offset: 2px; }
-button.hsq::after { content: ""; position: absolute; left: -2px; right: -2px; bottom: -7px; height: 3px; background: #2e2921; border-radius: 2px; }
-.hsq .hw { position: absolute; left: -2px; bottom: -7px; height: 3px; background: #6faf82; border-radius: 2px; z-index: 1; max-width: calc(100% + 4px); }
-.hsq .hw.hurt { background: #d3a04a; } .hsq .hw.crit { background: #cf4f37; }
-.hsq.spent .hw { opacity: .6; }
-.hsq .hx { position: absolute; inset: -6px; display: flex; align-items: center; justify-content: center; color: #e0302a;
-  font-size: 19px; font-weight: 700; line-height: 1; text-shadow: 0 0 2px #14110e; }
-@keyframes hsqpulse { 50% { background: var(--tc); } }
+.hsq .hx { position: absolute; inset: 1px; fill: none; stroke: rgba(224, 120, 98, .8); stroke-width: 1.4; stroke-linecap: round; }
+@keyframes hsqpulse { 50% { box-shadow: 0 0 0 3px rgba(255, 255, 255, .35); } }
 .hudbot { bottom: 10px; display: flex; justify-content: center; }
 button.hbug { display: flex; align-items: center; gap: 10px; background: rgba(20, 17, 14, .72); border: 1px solid transparent;
   border-radius: 6px; padding: 3px 12px; color: #e8e2d8; }
@@ -313,10 +309,10 @@ table.hscore tfoot td { font-size: 14px; padding-top: 3px; }
 @media (max-width: 760px) {
   .hname, .hmid, .hleft { display: none; }
   .hudtop { justify-content: space-around; }
-  .hsqs { gap: 4px; } button.hsq { width: 13px; height: 13px; }
+  .hsqs { gap: 4px; } button.hsq { width: 15px; height: 15px; }
 }
 /* the 2D map's "where is it?" burst */
-.flash2d circle { transform-box: fill-box; transform-origin: center; animation: flashring 1.4s ease-out both; }
-.flash2d circle.core { animation: flashcore 1.4s ease-out both; }
-@keyframes flashring { from { transform: scale(1); opacity: 1; } to { transform: scale(4); opacity: 0; } }
-@keyframes flashcore { from { opacity: .9; } to { opacity: 0; } }
+.flash2d circle { transform-box: fill-box; transform-origin: center; animation: flashring 1.6s ease-out both; }
+.flash2d circle.core { animation: flashcore 1.6s ease-in-out both; }
+@keyframes flashring { from { transform: scale(1); opacity: .7; } to { transform: scale(2.6); opacity: 0; } }
+@keyframes flashcore { 0%, 100% { opacity: 0; } 35% { opacity: .35; } }
