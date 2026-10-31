@@ -9,9 +9,9 @@ import { state } from '../state.js';
 import { CTRL, ENGAGE_COL, OBJ_R, TEAMCOL, TEAMCOL_LT, TEAMGREY } from '../config.js';
 import { BH, BW, DECOR, DROPZONES, MAP, OBJECTIVES, OPS, TERRAIN } from '../engine/world.js';
 import { chopIncrements, frontSteps } from '../engine/movement.js';
-import { LEVELS, floorAt, onLayer, ptFree } from '../engine/grid.js';
+import { LEVELS, floorAt, layerZ, onLayer, ptFree } from '../engine/grid.js';
 import { RULES, fmtIn } from '../rules/index.js';
-import { MARKER_R, SHOT_COL, dragLabelText, rangeRings, shotEye, shotHit } from '../ui/board.js';
+import { CHARGE_SPEED, MARKER_R, SHOT_COL, dragLabelText, rangeRings, shotEye, shotHit } from '../ui/board.js';
 import { engagements } from '../engine/engage.js';
 import { opsState, placeMarkerAt } from '../ui/ops.js';
 import { TTS_OPS } from '../data/tts-ops.js';
@@ -52,14 +52,16 @@ export function requestRender(shadows = false) {
 }
 // Animated base rings (rings.js) need a frame every tick: a loop runs while any is on the
 // table in the 3D view, and stops on its own (it never redraws the shadow map).
-let animating = false, animLoop = false;
+// The charge-path markers (threatGhost) ride the same loop.
+let animating = false, animLoop = false, pathAnims = [];
 function setAnimating(on) {
   animating = on;
-  if (!on || animLoop) return;
+  if (!(animating || pathAnims.length) || animLoop) return;
   animLoop = true;
   const step = now => {
-    if (!animating || !view3D || !three) { animLoop = false; return; }
+    if (!(animating || pathAnims.length) || !view3D || !three) { animLoop = false; return; }
     RING_T.value = now / 1000;
+    for (const pa of pathAnims) tickPath(pa, now / 1000);
     requestRender();
     requestAnimationFrame(step);
   };
@@ -258,10 +260,10 @@ function flatMat(hex, opacity = 1) {
   return basicMat[k];
 }
 // a flat ribbon on (or above) the table from (x1,y1,h1) to (x2,y2,h2)
-function ribbon(g, x1, y1, h1, x2, y2, h2, width, hex) {
+function ribbon(g, x1, y1, h1, x2, y2, h2, width, hex, opacity = 1) {
   const L = Math.hypot(x2 - x1, y2 - y1, h2 - h1);
   if (L < 1e-6) return;
-  const m = new THREE.Mesh(geo("box", () => new THREE.BoxGeometry(1, 1, 1)), flatMat(hex));
+  const m = new THREE.Mesh(geo("box", () => new THREE.BoxGeometry(1, 1, 1)), flatMat(hex, opacity));
   m.scale.set(width, 0.04, L);
   m.position.set((x1 + x2) / 2, (h1 + h2) / 2, (y1 + y2) / 2);
   m.lookAt(x2, h2, y2);
@@ -354,12 +356,60 @@ function threatSheet(g, map) {
 }
 // the landing ghost under threat, as on the 2D map: a ring in the colour of the worst
 // threat, a line from each enemy that could reach it, and who
-function threatGhost(g, at, [gx, gy], R, gz) {
+// A charging enemy's route to the ghost, as on the 2D map: a faint track at its floor's
+// height, an arrowhead cone where it ends, and (flow / comet) markers moving along it
+// towards the ghost, advanced by the animation loop.
+function chargePath3D(g, o, route, hex) {
+  const lift = 0.1, pts = route.map(p => [p[0], p[1], layerZ(p[4] || 0) + lift]);
+  const style = state.threatPaths, cum = [0];
+  for (let i = 1; i < pts.length; i++) {
+    const [ax, ay, ah] = pts[i - 1], [bx, by, bh] = pts[i];
+    cum.push(cum[i - 1] + Math.hypot(bx - ax, by - ay, bh - ah));
+    ribbon(g, ax, ay, ah, bx, by, bh, style === "arrow" ? 0.1 : 0.05, hex, style === "arrow" ? 0.85 : 0.4);
+  }
+  const [ax, ay, ah] = pts[pts.length - 2], [bx, by, bh] = pts[pts.length - 1];
+  const cone = new THREE.Mesh(geo("cone", () => new THREE.ConeGeometry(0.22, 0.5, 12)), flatMat(hex, 0.9));
+  cone.position.set(bx, bh, by);
+  cone.lookAt(bx + (bx - ax), bh, by + (by - ay)); cone.rotateX(Math.PI / 2);   // the cone's tip (+y) along the last leg
+  g.add(cone);
+  const end = new THREE.Mesh(geo(`range ${opR(o)}`, () => new THREE.RingGeometry(opR(o) - 0.035, opR(o) + 0.035, 96)), rangeMat(hex, 0.7));
+  end.rotation.x = -Math.PI / 2; end.position.set(bx, bh - lift + 0.03, by);
+  g.add(end);
+  const len = cum[cum.length - 1];
+  if (len < 1e-6 || (style !== "flow" && style !== "comet")) return;
+  // flow: short dashes every 0.7" at 2"/s; comet: three shrinking beads at CHARGE_SPEED
+  const marks = style === "flow"
+    ? Array.from({length: Math.max(1, Math.floor(len / 0.7))}, (_, i) => ({off: i * 0.7, m: new THREE.Mesh(geo("box", () => new THREE.BoxGeometry(1, 1, 1)), flatMat(hex))}))
+    : [[0.16, 0], [0.12, 0.25], [0.085, 0.5]].map(([r, off]) => {
+      const m = new THREE.Mesh(geo("sphere", () => new THREE.SphereGeometry(1, 12, 8)), flatMat(hex)); m.scale.setScalar(r);
+      return {off: -off, m};
+    });
+  for (const k of marks) { if (style === "flow") k.m.scale.set(0.11, 0.05, 0.32); g.add(k.m); }
+  const pa = {pts, cum, len, marks, speed: style === "flow" ? 2 : CHARGE_SPEED, flow: style === "flow"};
+  pathAnims.push(pa);
+  tickPath(pa, performance.now() / 1000);
+}
+function tickPath(pa, t) {
+  const {pts, cum, len, marks, speed, flow} = pa;
+  for (const {off, m} of marks) {
+    const span = flow ? Math.floor(len / 0.7) * 0.7 || len : len;   // dashes wrap on their own spacing
+    let s = ((t * speed + off) % span + span) % span;
+    let i = 1; while (i < cum.length - 1 && cum[i] < s) i++;
+    const u = (s - cum[i - 1]) / Math.max(1e-9, cum[i] - cum[i - 1]), [ax, ay, ah] = pts[i - 1], [bx, by, bh] = pts[i];
+    m.position.set(ax + (bx - ax) * u, ah + (bh - ah) * u + 0.02, ay + (by - ay) * u);
+    if (flow) m.lookAt(bx, bh + 0.02, by);
+  }
+}
+function threatGhost(g, at, [gx, gy], R, gz, routes) {
   const lvl = threatLevel(at);
   if (!lvl) return;
   const hex = c => parseInt(c.slice(1), 16);
   for (const o of at.close) if (!at.charge.includes(o)) ribbon(g, o.x, o.y, (o.z || 0) + 0.5, gx, gy, gz + 0.5, 0.05, hex(THREAT_COL.close));
-  for (const o of at.charge) ribbon(g, o.x, o.y, (o.z || 0) + 0.5, gx, gy, gz + 0.5, 0.08, hex(THREAT_COL.charge));
+  for (const o of at.charge) {
+    const route = routes && routes.get(o);
+    if (route && route.length > 1) chargePath3D(g, o, route, hex(THREAT_COL.charge));
+    else ribbon(g, o.x, o.y, (o.z || 0) + 0.5, gx, gy, gz + 0.5, 0.08, hex(THREAT_COL.charge));
+  }
   const ring = new THREE.Mesh(torus(R + 0.22, 0.09, 40), flatMat(hex(THREAT_COL[lvl])));
   ring.rotation.x = Math.PI / 2; ring.position.set(gx, gz + 0.08, gy);
   g.add(ring);
@@ -371,6 +421,7 @@ export function sync3DOverlay() {
   if (!three) return;
   const g = three.overlayGroup;
   clearGroup(g);
+  pathAnims = [];
   const d = state.drag, eye = shotEye();
   if (eye) sightShade(g, eye);
   const threat = dragThreat();
@@ -444,7 +495,7 @@ export function sync3DOverlay() {
     const label = cachedText(d.path ? dragLabelText() : "blocked", d.valid && d.path ? "#f5e9d8" : "#ffb4a6", "rgba(20,17,14,0.82)", 0.8);
     label.position.set(d.goal[0], gz + 2.6, d.goal[1]);
     g.add(label);
-    if (threat && d.path) threatGhost(g, threat.at, d.goal, BR, gz);
+    if (threat && d.path) threatGhost(g, threat.at, d.goal, BR, gz, threat.routes);
   }
   // the chosen target: the sight line the engine found, green, or a red line if none
   if (state.sel && state.target && state.target.alive && state.lastShot) {
@@ -457,6 +508,7 @@ export function sync3DOverlay() {
       g.add(box);
     }
   }
+  setAnimating(animating);   // runs the loop while charge-path markers move
   requestRender();
 }
 function init3D() {
