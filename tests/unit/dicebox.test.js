@@ -87,6 +87,18 @@ describe('the tray takes thrown dice', () => {
     tray.rerollDice(0, [9], [3]);        // no such die
     expect(tray.diceTrays[0].dice).toEqual([6, 5, 4, 6]);
   });
+  it('re-rolls each die once', () => {
+    tray.setRoll([1, 2, 3], 0);
+    tray.rerollDice(0, [0], [4]);
+    tray.rerollDice(0, [0, 2], [6, 5]);  // die 0 has had its re-roll; die 2 hasn't
+    expect(tray.diceTrays[0].dice).toEqual([4, 2, 5]);
+    expect(tray.diceTrays[0].rerolled).toEqual([0, 2]);
+    expect(tray.wasRerolled(0, 1)).toBe(false);
+    // new dice thrown in beside the old ones keep the old ones' re-rolls used
+    tray.setRoll([4, 2, 5, 6], 0, '', [0, 2]);
+    expect(tray.diceTrays[0].rerolled).toEqual([0, 2]);
+    tray.setRoll([6, 5, 4, 6], 0);
+  });
   it('keeps each side in its own tray, so both can roll at once', () => {
     tray.setRoll([3, 3], 1, 'saves');
     expect(tray.diceTrays[1]).toMatchObject({ who: 1, dice: [3, 3], label: 'saves' });

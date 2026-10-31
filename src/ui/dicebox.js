@@ -1,17 +1,18 @@
 /**
  * The dice boxes: physical dice, the way Kill Team players handle them in Tabletop Simulator.
- * One per side, behind a die icon in a bottom corner of the screen (Ash left, Slate right),
+ * One per side, behind a die icon in a bottom corner of the table (Ash left, Slate right),
  * so the attacker and the defender can roll at the same time. Pick how many and they land
  * loose on the mat. Press any of them and the whole pile comes up in your hand; shake it
  * (they rattle), then let go over the box and they tumble. When they stop they line up in
  * six slots by face, and the roll goes to that side's tray (log, online play) like any
  * other. Pick slotted dice up and throw them again to re-roll them: one die, or several
- * selected by clicking or by dragging a box round them. Shoot / Fight dice and the other
+ * selected by clicking or by dragging a box round them. Each die re-rolls once; after that
+ * it stays in its slot, marked with a dot. Shoot / Fight dice and the other
  * player's rolls tumble through their box too, so everyone sees them land.
  */
 import { d6 } from '../engine/dice.js';
 import { TEAMNAME } from '../config.js';
-import { clearDice, diceTrays, mayRoll, onDiceRender, rerollDice, setHit, setRoll, tally } from './dicetray.js';
+import { clearDice, diceTrays, mayRoll, onDiceRender, rerollDice, setHit, setRoll, tally, wasRerolled } from './dicetray.js';
 import { atRest, handOffsets, shaker, slotSpots, speed, stepDice } from './dicephys.js';
 
 const S = 22, R = S / 2;           // die size and collision radius, px
@@ -119,6 +120,7 @@ function makeBox(side, dock) {
   }
   function removeDie(d) { d.el.remove(); dice.splice(dice.indexOf(d), 1); }
   function result(v) { return v === 6 ? "crit" : v === 1 || v < tray().hit ? "miss" : "hit"; }
+  const spent = d => d.idx != null && wasRerolled(side, d.idx);   // used its one re-roll
   function draw(d) {
     const lift = d.mode === "held" ? 1.15 : 1, c = d.el.classList;
     d.el.dataset.f = d.face;
@@ -126,6 +128,7 @@ function makeBox(side, dock) {
     const res = d.idx != null && (d.mode === "slot" || d.mode === "glide") ? result(d.val) : "";
     for (const k of ["crit", "hit", "miss"]) c.toggle(k, res === k);
     c.toggle("held", d.mode === "held"); c.toggle("sel", d.sel);
+    c.toggle("rr", !!res && spent(d));
   }
   // a free spot on the mat for a new loose die
   function freeSpot(b) {
@@ -205,10 +208,12 @@ function makeBox(side, dock) {
     if (thrown.length) {
       const fresh = thrown.filter(d => d.idx == null);
       if (fresh.length) {
-        // new dice join whatever is already in the slots, as one roll
+        // new dice join whatever is already in the slots, as one roll; slotted dice thrown
+        // with them have used their re-roll, and ones that already had keep that
+        const used = [...tray().rerolled, ...thrown.filter(d => d.idx != null).map(d => d.idx)];
         const all = [...dice.filter(d => d.idx != null).sort((a, b) => a.idx - b.idx), ...fresh];
         all.forEach((d, i) => d.idx = i);
-        setRoll(all.map(d => d.val), side);
+        setRoll(all.map(d => d.val), side, "", used);
       } else rerollDice(side, thrown.map(d => d.idx), thrown.map(d => d.val));
     }
     toSlots();
@@ -240,7 +245,7 @@ function makeBox(side, dock) {
   }
 
   /* ---------- hands ---------- */
-  const grabbable = d => d.mode === "loose" || d.mode === "slot";
+  const grabbable = d => d.mode === "loose" || (d.mode === "slot" && !spent(d));
   function press(ev, d) {
     if (ev.button > 0 || !grabbable(d)) return;
     ev.preventDefault(); ev.stopPropagation();
@@ -342,7 +347,8 @@ function makeBox(side, dock) {
     slotEls.forEach((e, i) => { e.className = "dmslot " + result(i + 1); });
     const c = tally(t.dice, t.hit);
     sum.innerHTML = t.dice.length
-      ? `${t.label ? t.label + " · " : ""}<b>${c.crit}</b> crit · <b>${c.norm}</b> hit · ${t.dice.length - c.crit - c.norm} miss`
+      ? `${t.label ? t.label + " · " : ""}<b>${c.crit}</b> crit · <b>${c.norm}</b> hit · ${t.dice.length - c.crit - c.norm} miss` +
+        (t.rerolled.length ? ` · ${t.rerolled.length} re-rolled` : "")
       : `<span class="hint">${off ? "The other player rolls here." : "Pick how many, then grab, shake and drop them in the box."}</span>`;
     badge.textContent = t.dice.length ? `${c.crit}·${c.norm}` : "";
   }
