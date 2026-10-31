@@ -4,7 +4,9 @@ import { describe, it, expect, afterAll } from 'vitest';
 import * as world from '../../src/engine/world.js';
 import * as rules from '../../src/rules/index.js';
 import { BASE_R } from '../../src/config.js';
-import { threatMap, threatsAt } from '../../src/engine/threat.js';
+import { chargeRoute, threatMap, threatsAt } from '../../src/engine/threat.js';
+import { opR } from '../../src/engine/geometry.js';
+import { CTRL } from '../../src/config.js';
 
 afterAll(() => rules.setRuleset('killteam'));
 // a bare 40" x 12" board with just the given terrain rects, one enemy (B1) and one mover (A1)
@@ -65,6 +67,17 @@ describe('Kill Team (2024) threat ranges', () => {
     expect(at(map, 10, 2)).toEqual([false, false]);     // 4" away as the crow flies, ~13" round the end
     expect(at(map, 9.2, 4)).toEqual([false, false]);    // within 2" of the enemy's side, but through the wall
     expect(at(map, 10, 10)).toEqual([true, true]);      // round the end
+  });
+
+  it('the charge route runs from the enemy to within control range of the base, round the wall', () => {
+    const {map, mover, foe} = board({}, [{kind: 'heavy', x: 8, y: 0, w: 0.5, h: 10, z: 8}]);
+    const route = chargeRoute(map, foe, 10, 10);
+    expect(route[0].slice(0, 2)).toEqual([foe.x, foe.y]);
+    const [ex, ey] = route[route.length - 1];
+    expect(Math.hypot(ex - 10, ey - 10)).toBeLessThanOrEqual(opR(mover) + opR(foe) + CTRL + 1e-6);
+    // it passes below the wall's end (y > 10), not through it
+    expect(route.some(([x, y]) => y > 10 && x > 7 && x < 9)).toBe(true);
+    expect(chargeRoute(map, foe, 10, 2)).toBe(null);   // out of reach: no route
   });
 
   it('an injured enemy moves 2" less', () => {
