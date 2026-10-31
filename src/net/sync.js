@@ -20,14 +20,16 @@ import { exportDice, onDiceChange, renderDice, setDiceTray } from '../ui/dicetra
 import { onOpsChange, opsState, renderOps, setOpsState } from '../ui/ops.js';
 import { TTS_OPS } from '../data/tts-ops.js';
 import { closeRoom, openRoom, selfId, send } from './session.js';
+import { noteChange } from './replayer.js';
 
 // role: null offline, "host" or "guest"; seat: 0 / 1 = the side you play, null = watching
 export const net = { role: null, code: null, seat: null, hostId: null, v: 0, peers: {}, roster: [], status: "" };
 export const online = () => net.role !== null;
 const connected = () => net.role === "host" || !!net.hostId;   // a guest waits for the host
-export const mayControl = op => !online() || (!!op && op.team === net.seat && connected());
-export const mayPlay = () => !online() || ((net.seat === 0 || net.seat === 1) && connected());
-export const maySetUp = () => !online() || net.role === "host";
+// a replay on the table (replayer.js) is look-only
+export const mayControl = op => !state.replay && (!online() || (!!op && op.team === net.seat && connected()));
+export const mayPlay = () => !state.replay && (!online() || ((net.seat === 0 || net.seat === 1) && connected()));
+export const maySetUp = () => !state.replay && (!online() || net.role === "host");
 
 const SIDE = ["Ash", "Slate"];
 const seatName = s => s === 0 || s === 1 ? SIDE[s] : "watching";
@@ -86,8 +88,10 @@ function addLines(lines) {
   if (Array.isArray(lines)) for (const l of lines.slice(0, 30)) if (l && typeof l.html === "string") logRemote(l.html.slice(0, 4000), !!l.hit);
 }
 
-// After every render (and every Miniatures change): if the game changed, send it.
+// After every render (and every Miniatures change): if the game changed, send it (and
+// the replay recorder looks for a new step).
 export function pump() {
+  noteChange();
   if (!online() || applying) return;
   const g = exportGame(), s = sig(g);
   if (s === lastSig) { outbox = []; return; }   // nothing changed: log lines were local feedback

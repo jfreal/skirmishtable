@@ -69,6 +69,45 @@ Code: `src/net/link.js` (pure: pack, compress, version, decode; tested in Node) 
 `src/net/share.js` (the button and opening a link). `tests/e2e/share.spec.js` shares from
 one page and opens the link in another.
 
+## Replays
+
+**Status: built.** Every action is recorded as you play. The **Replay** panel offers this
+game (and the last one, kept in `localStorage` across a reload) as **Watch replay**, **Share
+replay** (a link) or **Save file** (a `.json` to send or keep); **Open replay file…** opens one.
+
+Watching puts a bar above the table: Back / Next (or the ← → keys), Play (one step a
+second), a slider, a button per turning point that jumps to its start, and the log lines of
+the step. The table is look-only (`state.replay`: `mayControl`, `mayPlay` and `maySetUp` say
+no). The address follows the step (`#replay=1.<data>&step=12`), so **Copy link to this step**
+or the address bar links straight to that moment. **Leave replay** puts your own table back;
+**Play on from here** keeps the shown step as a new game.
+
+How it fits:
+
+- **What a step is.** After every change (`sync.js` `pump()`, the same place online play
+  sends the game), the recorder looks once at `exportGame()`, after everything the change
+  did has happened (a timeout). Different from the last frame: a new step, with the game
+  log lines that came since, as plain text. Back to the frame before it (Undo): the last step
+  comes off. A map load, a reset or an opened share link starts a new recording.
+- **Saved states, not inputs.** Each step stores the result, not "op 3 dragged here", so a
+  replay never re-runs the router or the dice and old replays still play after the engine
+  changes.
+- **Packed.** The first frame is a whole game, packed as a share link packs it. Each step
+  after it carries only the operative fields that changed (`[op, field, value, …]`), any of
+  tray, dice, mission and miniatures that changed, and its log lines. Then the same
+  deflate-raw and base64url as share links. Format version `1.`, and `v: 1` in the JSON.
+- **Opening one** goes through `applyGame()` frame by frame, so the same cleaners as share
+  links and online play apply; log lines are put in with `textContent`. Online, opening a
+  replay link leaves the room first; watching your own replay asks you to leave first.
+
+Sizes (`tests/unit/replay.test.js`): a four-turning-point game with 63 steps, each with a
+log line, is a link of about 2,700 characters. Over 2,000 the panel warns that some chat apps
+cut links that long; the file has no limit.
+
+Code: `src/net/replay.js` (pure: record, undo, pack, decode; tested in Node) and
+`src/net/replayer.js` (recorder, viewer bar, Replay panel). `tests/e2e/replay.spec.js`
+records a game in one page and steps through the link in another.
+
 Below is the research and plan online play was built from.
 
 Goal: one person hosts a game. Others open a link and see the same table, live. Each
