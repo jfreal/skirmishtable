@@ -227,13 +227,13 @@ through the Steam API).
 
 Taken from how players run Kill Team in Tabletop Simulator:
 
-- **Dice boxes**: one per side, behind a die icon in the bottom corners of the screen (Ash
+- **Dice boxes**: one per side, behind a die icon in the bottom corners of the table (Ash
   left, Slate right), so the attacker and the defender can roll at once. Online you roll in
   your own box; the other one shows their rolls. Physical dice: pick how many and they land
   on a mat; press one and the whole pile comes up in your hand, shake it (it rattles), drop
   it in the box and the dice tumble, then stack into six slots by face, counted against the
   hit/save target. Pick slotted dice up (click to select several, or drag a box round them)
-  and throw them again to re-roll them. Every roll goes to the log and online play. Shoot
+  and throw them again to re-roll them; each die re-rolls once (a dot marks it). Every roll goes to the log and online play. Shoot
   puts the attack dice in the shooter's box and the save dice in the target's; Fight puts
   each side's dice in its own box. Sounds are made in the browser, no files.
 - **Wounds**: a counter over each model (3D) and under each token (2D), green → amber when
