@@ -9,6 +9,14 @@ const at = (x, y) => ({ x, y });
 describe('sight on Volkus AO 1', () => {
   const nooked = at(12.05, 4.25);   // tucked into the stronghold's corner
 
+  it('a base flush against a scanned wall gets no cover from it when shot from its own side', () => {
+    // the base presses into the wall's traced cells; its sight samples must not
+    const s = sight.sightAnalysis(at(7.71, 8.83), at(9.0, 4.0));
+    expect(s.visible).toBe(true);
+    expect(s.coverBy).toBeNull();
+    expect(s.hardCover).toBe(false);
+  });
+
   it('a nooked operative is visible but in cover from the wall beside it', () => {
     const s = sight.sightAnalysis(at(7.3, 1), nooked);
     expect(s.visible).toBe(true);
