@@ -14,7 +14,14 @@
 <header>
   <h1>Skirmish<span>Table</span></h1>
   <span class="hint" id="hint">Drag an operative to move — the app paths around or over terrain and prices the move by the current rules.</span>
+  <button id="optionsbtn" class="mini" title="Settings, remembered in this browser">Options</button>
 </header>
+
+<dialog id="options" aria-labelledby="optionstitle">
+  <h2 id="optionstitle">Options</h2>
+  <div id="optionrows"></div>
+  <div class="btnrow"><button id="optionsclose" class="mini">Done</button></div>
+</dialog>
 
 <div class="main">
   <div class="boardwrap">

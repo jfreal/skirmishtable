@@ -25,6 +25,19 @@ header .hint {
   display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
 }
 @media (max-width: 760px) { header .hint { height: calc(3 * 1.35em); -webkit-line-clamp: 3; } }
+header #optionsbtn { align-self: center; }
+dialog#options {
+  background: #1d1914; color: #e8e2d8; border: 1px solid #3a332a; border-radius: 8px;
+  padding: 14px 16px; width: min(380px, calc(100vw - 32px));
+}
+dialog#options::backdrop { background: rgba(10, 8, 6, .6); }
+dialog#options h2 {
+  font-family: "Big Shoulders", sans-serif; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .12em; font-size: 14px; color: #9a9184; margin: 0 0 10px;
+}
+.optrow { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
+.optlabel { display: flex; justify-content: space-between; }
+.optrow input[type=range] { width: 100%; accent-color: #e0672f; }
 .main { display: flex; gap: 12px; padding: 12px 16px; flex: 1; align-items: flex-start; flex-wrap: wrap; }
 .boardwrap { flex: 1 1 560px; min-width: min(320px, 100%); }
 /* wraps: on a phone the buttons and ring pickers fill the width, and the note and Load from

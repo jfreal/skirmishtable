@@ -19,6 +19,7 @@ import { wireOps } from './ui/ops.js';
 import { wireShare } from './net/share.js';
 import { wireInput } from './ui/input.js';
 import { wireThreatPicker } from './ui/threat.js';
+import { wireOptions } from './ui/options.js';
 import * as table3d from './view3d/table3d.js';
 import * as rules from './rules/index.js';
 import { onMinisChange } from './view3d/units.js';
@@ -27,6 +28,7 @@ wireInput();
 wireControls();
 table3d.wireViewToggle();
 wireThreatPicker(() => renderAll());
+wireOptions();
 onMinisChange(bases => { if (bases) { renderAll(); renderMinis(); } });   // a model measured: rings, reach and fit follow its base
 
 /* ---------- go ---------- */

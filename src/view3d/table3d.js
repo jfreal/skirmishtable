@@ -22,6 +22,7 @@ import { lineBlocked, visibilityPolygon } from '../engine/sight.js';
 import { opR, perimeterPts } from '../engine/geometry.js';
 import { addModels, ensureManifest, hasModels, progress, retryFailed, setRedraw, steamBytes, steamRemembered, useSteamSource } from './models.js';
 import { onMinisChange, unitObject } from './units.js';
+import { options } from '../ui/options.js';
 import { THREAT_COL, dragThreat, threatCanvas, threatLabel, threatLevel } from '../ui/threat.js';
 import { ACTIVE_STYLES, READY_STYLES, RING_T, animates, baseRing, classicBand, ringStyle, setRingStyle } from './rings.js';
 
@@ -521,7 +522,8 @@ function init3D() {
   setRedraw(() => requestRender(true));   // models and textures arriving (cut-outs shape shadows too)
 }
 // WASD slides the camera and its target over the table, along the ground, relative to where
-// the camera faces. Speed grows with zoom distance; the target stays over the board.
+// the camera faces. Speed grows with zoom distance and the Options pan speed; the target
+// stays over the board.
 const PAN_KEYS = {KeyW: [0, 1], KeyS: [0, -1], KeyA: [-1, 0], KeyD: [1, 0]};
 function panKeys() {
   const held = new Set();
@@ -540,7 +542,7 @@ function panKeys() {
     for (const k of held) { f += PAN_KEYS[k][1]; r += PAN_KEYS[k][0]; }
     const move = fwd.multiplyScalar(f).add(right.multiplyScalar(r));
     if (move.lengthSq()) {
-      move.normalize().multiplyScalar(camera.position.distanceTo(controls.target) * 0.6 * dt);
+      move.normalize().multiplyScalar(camera.position.distanceTo(controls.target) * 0.6 * options.panSpeed * dt);
       const tx = Math.max(0, Math.min(BW, controls.target.x + move.x)) - controls.target.x;
       const tz = Math.max(0, Math.min(BH, controls.target.z + move.z)) - controls.target.z;
       controls.target.x += tx; controls.target.z += tz;
@@ -550,7 +552,7 @@ function panKeys() {
     requestAnimationFrame(step);
   };
   document.addEventListener("keydown", ev => {
-    if (!PAN_KEYS[ev.code] || !view3D || ev.ctrlKey || ev.metaKey || ev.altKey || typing(ev.target)) return;
+    if (!PAN_KEYS[ev.code] || !view3D || ev.ctrlKey || ev.metaKey || ev.altKey || typing(ev.target) || document.querySelector("dialog[open]")) return;
     ev.preventDefault();
     if (!held.size) requestAnimationFrame(step);
     held.add(ev.code);
