@@ -34,6 +34,12 @@ header .hint {
 .ringpick { display: flex; gap: 6px; font-size: 11px; color: #b8ad9e; white-space: nowrap; }
 .ringpick select { background: #262019; color: #e8e2d8; border: 1px solid #3a332a; border-radius: 4px; padding: 1px 3px; font-size: 11px; }
 @media (max-width: 760px) { .ringpick label { font-size: 0; } .ringpick select { font-size: 11px; max-width: 92px; } }
+.threatkey { display: inline-flex; align-items: center; gap: 4px; }
+.threatkey i { display: inline-block; width: 12px; height: 10px; border-radius: 2px; }
+.threatkey i.ch { background: rgba(210,60,42,.45); border: 2px solid #d23c2a; }
+.threatkey i.cl { margin-left: 4px; border: 2px solid #e0a21e;
+  background: repeating-linear-gradient(45deg, rgba(224,162,30,.7) 0 2px, transparent 2px 5px); }
+@media (max-width: 760px) { .threatkey { display: none; } }
 /* fixed height too: the note shows model-loading progress, and must not move the table */
 .viewbar .hint { flex: 1 1 240px; min-width: 0; line-height: 1.35; height: calc(2 * 1.35em); overflow: hidden;
   display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
