@@ -9,4 +9,5 @@ export const state = {
   drag: null,
   suppressClick: false,
   rulerPts: [],
+  replay: false,          // a replay is on the table: look, don't touch (net/replayer.js)
 };
