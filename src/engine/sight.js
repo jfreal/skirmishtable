@@ -113,6 +113,46 @@ export function sightAnalysis(a, b) {
   // hardCover: some of the cover is heavy terrain or a wall, not just light terrain
   return {visible: true, gap, coverBy: pick(cov), obscBy: pick(obs), hardCover: best.hard, from: [best.ax, best.ay], clearLine};
 }
+// The sight cone from one attacker point (ax, ay) to the whole of b's base, for drawing:
+// n + 1 rays fanned between the two tangents to b's base. Each ray has its direction
+// (ux, uy), the distance at which it leaves the far side of the base (`far`) and, when a
+// wall or heavy terrain stops it before it reaches the base, the distance to that (`stop`,
+// else null). Null when the point is inside b's base.
+export function sightCone(ax, ay, b, n = 32) {
+  const R = opR(b), dx = b.x - ax, dy = b.y - ay, d = Math.hypot(dx, dy);
+  if (d <= R + 1e-6) return null;
+  const th = Math.atan2(dy, dx), al = Math.asin(R / d), rays = [];
+  for (let i = 0; i <= n; i++) {
+    const a = th - al + 2 * al * i / n, ux = Math.cos(a), uy = Math.sin(a);
+    const p = dx * ux + dy * uy, h = Math.sqrt(Math.max(0, R * R - d * d + p * p)), near = p - h;
+    let stop = null;
+    gridWalk(ax, ay, ax + ux * near, ay + uy * near, (k, t) => sightStop(k) && (stop = t * near, true));
+    rays.push({ux, uy, far: p + h, stop});
+  }
+  return rays;
+}
+// The blocked parts of a sight cone, as polygons ([[x, y], ...]): each run of rays that
+// terrain stops, from where they stop to the far side of the target's base. A run reaches
+// half way to the clear ray on each side, where the shadow's edge lies.
+export function coneShadows(ax, ay, rays) {
+  const out = [], at = (r, d) => [ax + r.ux * d, ay + r.uy * d];
+  for (let i = 0; i < rays.length; i++) {
+    if (rays[i].stop === null) continue;
+    let j = i;
+    while (j + 1 < rays.length && rays[j + 1].stop !== null) j++;
+    const run = rays.slice(i, j + 1);
+    if (i > 0) run.unshift(midRay(rays[i - 1], rays[i]));
+    if (j < rays.length - 1) run.push(midRay(rays[j], rays[j + 1]));
+    out.push([...run.map(r => at(r, r.stop)), ...run.reverse().map(r => at(r, r.far))]);
+    i = j;
+  }
+  return out;
+}
+// the ray half way between two neighbours, stopped where the stopped one of them is
+function midRay(r, s) {
+  const ux = r.ux + s.ux, uy = r.uy + s.uy, l = Math.hypot(ux, uy);
+  return {ux: ux / l, uy: uy / l, far: (r.far + s.far) / 2, stop: r.stop ?? s.stop};
+}
 // Index of the first attacker point with an unblocked line to some target point, or -1.
 function seeFrom(aPts, bPts) {
   for (let i = 0; i < aPts.length; i++) for (const [bx, by] of bPts)

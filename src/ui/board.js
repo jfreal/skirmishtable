@@ -6,12 +6,12 @@ import { CTRL, ENGAGE_COL, OBJ_R, TEAMCOL, TEAMCOL_LT, TEAMGREY, TEAMNAME } from
 import { renderHud } from './hud.js';
 import { VOLKUS_PIECES } from '../data/volkus-pieces.js';
 import { isInjured } from '../engine/dice.js';
-import { blobPoints, dist, opR, perimeterPts, px, wallSegments } from '../engine/geometry.js';
+import { blobPoints, dist, opR, px, wallSegments } from '../engine/geometry.js';
 import { chopIncrements, climbDown, climbUp, frontSteps, opLayer } from '../engine/movement.js';
 import { LEVELS } from '../engine/grid.js';
 import { engagements } from '../engine/engage.js';
 import { SHOT_KINDS, shotsFrom } from '../engine/shots.js';
-import { lineBlocked, visibilityPolygon } from '../engine/sight.js';
+import { coneShadows, sightCone, visibilityPolygon } from '../engine/sight.js';
 import { BH, BW, DECOR, DROPZONES, MAP, OBJECTIVES, OPS, OVERHEAD, TERRAIN } from '../engine/world.js';
 import { pump } from '../net/sync.js';
 import { NS, el, svg } from './dom.js';
@@ -318,6 +318,22 @@ export const SHOT_COL = {clear: "#3f9a3a", cover: "#d79a1e", obscured: "#8d5fa8"
 export function shotHit(sh) {
   return sh.kind === "obscured" ? sh.sight.obscBy : sh.inCover ? sh.sight.coverBy : null;
 }
+// A sight cone on the map: from the shooter's chosen base point to the whole of the
+// target's base, tinted with the shot's colour, the slices that walls or heavy terrain
+// block shaded dark, and a dot on the point the shooter picked.
+function drawCone([ax, ay], o, col, {strong = false, dashed = false} = {}) {
+  const rays = sightCone(ax, ay, o);
+  if (!rays) return;
+  const poly = pts => "M" + pts.map(([x, y]) => px(x).toFixed(1) + " " + px(y).toFixed(1)).join(" L") + "Z";
+  const g = el("g", {"pointer-events": "none", "data-cone": strong ? "target" : ""}, gOverlay);
+  el("path", {d: poly([[ax, ay], ...rays.map(r => [ax + r.ux * r.far, ay + r.uy * r.far])]),
+    fill: col, "fill-opacity": strong ? 0.24 : 0.13, stroke: col, "stroke-opacity": strong ? 0.9 : 0.6,
+    "stroke-width": strong ? 1.4 : 1, "stroke-dasharray": dashed ? "3 4" : "none", "stroke-linejoin": "round"}, g);
+  const shade = coneShadows(ax, ay, rays);
+  if (shade.length) el("path", {d: shade.map(poly).join(" "), fill: "#33291d", "fill-opacity": strong ? 0.5 : 0.35,
+    "data-cone-shade": shade.length}, g);
+  el("circle", {cx: px(ax), cy: px(ay), r: strong ? 3.5 : 2.5, fill: col, stroke: "#14110e", "stroke-width": 1}, g);
+}
 function renderShadows(eye) {
   const g = el("g", {opacity:0.15, "clip-path":"url(#boardclip)", "pointer-events":"none"}, gOverlay);
   const poly = visibilityPolygon(eye.x, eye.y).map(p => px(p[0]).toFixed(1) + " " + px(p[1]).toFixed(1));
@@ -325,16 +341,13 @@ function renderShadows(eye) {
     fill:"#33291d", "fill-rule":"evenodd"}, g);
   // Every enemy, marked by how a shot at it is judged (base-to-base cover lines, so a
   // model peeking around a corner still counts): solid ring = a valid target, dashed =
-  // not one. The line is the one that decides the call — a clear line, the cover line
-  // through the cover or obscuring terrain (dot = where it crosses); none to an enemy it
-  // can't see.
+  // not one. The cone runs from the base point the shooter picked to the whole target
+  // base (dot = where the deciding line crosses cover or obscuring terrain); none to an
+  // enemy it can't see. The chosen target's cone is drawn bolder further down.
+  const chosen = state.lastShot && !eye.landing ? state.target : null;
   for (const sh of shotsFrom(eye)) {
     const o = sh.target, col = SHOT_COL[sh.kind], k = SHOT_KINDS[sh.kind];
-    if (sh.line) {
-      const [[ax, ay], [bx, by]] = sh.line;
-      el("line", {x1:px(ax), y1:px(ay), x2:px(bx), y2:px(by), stroke: col,
-        "stroke-width": 1.6, "stroke-dasharray": k.valid ? "none" : "3 4", opacity: 0.85}, gOverlay);
-    }
+    if (sh.line && o !== chosen) drawCone(sh.sight.from, o, col, {dashed: !k.valid});
     const hit = shotHit(sh);
     if (hit) el("circle", {cx:px(hit.at[0]), cy:px(hit.at[1]), r:3.5, fill:col, stroke:"#14110e", "stroke-width":1}, gOverlay);
     const oR = opR(o);
@@ -510,16 +523,11 @@ export function renderOverlay(cursor) {
         .textContent = "blocked";
     }
   }
-  // sight lines
+  // the chosen target's sight cone, and the terrain that gives it cover or obscures it
   if (state.lastShot && state.sel && state.target && state.target.alive) {
     const s = state.lastShot.sight;
-    const bPts = perimeterPts(state.target, 24, opR(state.target) - 0.02);
-    const [ax, ay] = s.from;
-    for (const [bx, by] of bPts) {
-      const blocked = lineBlocked(ax, ay, bx, by);
-      el("line", {x1:px(ax), y1:px(ay), x2:px(bx), y2:px(by),
-        stroke: blocked ? "#cf4f37" : "#4d7a3f", opacity: blocked ? 0.18 : 0.3, "stroke-width":1}, gOverlay);
-    }
+    if (s.visible) drawCone(s.from, state.target, SHOT_COL[state.lastShot.kind],
+      {strong: true, dashed: !SHOT_KINDS[state.lastShot.kind].valid});
     for (const t of [s.coverBy, s.obscBy]) {
       if (!t) continue;
       el("rect", {x:px(t.x)-3, y:px(t.y)-3, width:px(t.w)+6, height:px(t.h)+6, fill:"none",
