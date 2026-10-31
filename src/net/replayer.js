@@ -226,6 +226,7 @@ function saveFile(r) {
 }
 async function openFile(file) {
   let r = null;
+  if (file.size > 20e6) { status = "Couldn't open that replay: the file is too big."; renderReplayBox(); hint(status); return; }
   try { r = unpackReplay(JSON.parse(await file.text())); } catch (e) {}
   const why = !r ? "it isn't a SkirmishTable replay" : r.error || gameProblem({ ...r.frames[0], mapDef: r.mapDef });
   if (why) { status = "Couldn't open that replay: " + why + "."; renderReplayBox(); hint(status); return; }
