@@ -14,7 +14,7 @@
 import { CTRL } from '../config.js';
 import { opR } from './geometry.js';
 import { C_HEAVY, C_WALL, G, GRES, NAV_R } from './grid.js';
-import { Heap, NAVVER, buildField, opLayer, useBase } from './movement.js';
+import { Heap, NAVVER, buildField, fieldPath, opLayer, smoothPath, useBase } from './movement.js';
 import { OPS } from './world.js';
 import { RULES } from '../rules/index.js';
 
@@ -75,13 +75,15 @@ function grow(cells, r, into, bit) {
 }
 
 // One enemy's two zones, for a mover with base radius r, as bits in per-cell masks.
+// Returns its route field (kept for chargeRoute), or null when it threatens nothing.
 function enemyZones(e, r, bit, charge, close) {
   const a = threatAllow(e), cap = Math.max(a.charge, a.close);
-  if (!a.charge && !a.closeOn) return;
+  if (!a.charge && !a.closeOn) return null;
   useBase(opR(e));                 // the enemy routes its own base
   const F = buildField(e.x, e.y, 0, Infinity, cap + 0.5, opLayer(e));   // climbing allowed throughout: errs towards warning
   if (a.charge > 0) grow(reachCells(F, a.charge), r + opR(e) + a.chargeReach, charge, bit);
   if (a.closeOn) grow(reachCells(F, Math.max(a.close, 0.1)), r + opR(e) + a.closeReach, close, bit);   // no moves: shoots from where it stands
+  return F;
 }
 
 // Every live, ready (not yet activated) enemy of mover.team: per-cell bitmasks of who can
@@ -94,9 +96,10 @@ export function threatMap(mover) {
     foes.map(o => `${o.id}@${o.x.toFixed(3)},${o.y.toFixed(3)},${o.z || 0},${o.wounds},${o.apl},${opR(o)}`).join(";");
   if (memo.key === key && memo.map && memo.map.g === G) return memo.map;
   const charge = new Uint32Array(G.n), close = new Uint32Array(G.n), prevR = NAV_R;
-  try { foes.forEach((o, i) => enemyZones(o, r, 1 << i, charge, close)); }
+  let fields;
+  try { fields = foes.map((o, i) => enemyZones(o, r, 1 << i, charge, close)); }
   finally { useBase(prevR); }
-  memo = {key, map: {g: G, foes, charge, close, version: (memo.map ? memo.map.version : 0) + 1}};
+  memo = {key, map: {g: G, foes, fields, r, routes: new Map(), charge, close, version: (memo.map ? memo.map.version : 0) + 1}};
   return memo.map;
 }
 
@@ -105,4 +108,41 @@ export function threatsAt(map, x, y) {
   const i = Math.min(G.nx - 1, Math.max(0, Math.floor(x / GRES))), j = Math.min(G.ny - 1, Math.max(0, Math.floor(y / GRES)));
   const k = j * G.nx + i, pick = bits => map.foes.filter((_, n) => bits & (1 << n));
   return {charge: pick(map.charge[k]), close: pick(map.close[k])};
+}
+
+// no wall or heavy terrain on the board cells between two points (what grow() spreads through)
+function clearRun(x1, y1, x2, y2) {
+  const n = Math.ceil(Math.hypot(x2 - x1, y2 - y1) / (GRES / 2));
+  for (let s = 1; s < n; s++) {
+    const x = x1 + (x2 - x1) * s / n, y = y1 + (y2 - y1) * s / n;
+    const c = G.cls[Math.floor(y / GRES) * G.nx + Math.floor(x / GRES)];
+    if (c === C_WALL || c === C_HEAVY) return false;
+  }
+  return true;
+}
+// The route enemy e would charge along to reach the mover's base centred at (gx, gy): the
+// shortest one in its threat field to any spot within control range of that base with a
+// clear run to it, as the charge zone itself is judged. [[x, y, climbZ, pad, layer], ...]
+// from the enemy's base centre to where it would end, or null if none is found.
+export function chargeRoute(map, e, gx, gy) {
+  const n = map.foes.indexOf(e), F = map.fields && map.fields[n], a = threatAllow(e);
+  if (!F || !a.charge) return null;
+  const key = `${gx.toFixed(3)},${gy.toFixed(3)}`, hit = map.routes.get(e);
+  if (hit && hit.key === key) return hit.path;
+  const reach = map.r + opR(e) + a.chargeReach;
+  let bk = -1, bg = Infinity;
+  for (let k = 0; k < F.S0; k++) {
+    if (!F.closed[k] || F.g[k] > a.charge + 1e-9 || F.g[k] >= bg) continue;
+    const x = F.X(k), y = F.Y(k);
+    if (Math.hypot(x - gx, y - gy) > reach || !clearRun(x, y, gx, gy)) continue;
+    bk = k; bg = F.g[k];
+  }
+  let path = null;
+  if (bk >= 0) {
+    const prevR = NAV_R;
+    try { useBase(opR(e)); path = smoothPath(fieldPath(F, bk), F.tol); }
+    finally { useBase(prevR); }
+  }
+  map.routes.set(e, {key, path});
+  return path;
 }

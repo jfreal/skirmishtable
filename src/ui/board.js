@@ -362,18 +362,53 @@ export function dragLabelText() {
   else if (d.foes && d.foes.length) txt += ` → ${d.foes.map(f => f.name).join(", ")}`;
   return txt;
 }
+// A charging enemy's route to the ghost, moving from the enemy towards it in the picked
+// style: a faint track, flowing dashes or comets on it (SMIL, timed from the page's start,
+// so the redraw on every pointer move doesn't restart them), an arrowhead, and a dashed
+// outline of the enemy's base where the charge would stop.
+export const CHARGE_SPEED = 6;   // inches per second, for the comets; the dashes flow slower
+function chargePath2D(o, route) {
+  const pts = route.map(p => [px(p[0]), px(p[1])]), col = THREAT_COL.charge, style = state.threatPaths;
+  const d = "M" + pts.map(([x, y]) => `${x.toFixed(1)} ${y.toFixed(1)}`).join(" L");
+  let len = 0;
+  for (let i = 1; i < pts.length; i++) len += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
+  const g = el("g", {"pointer-events":"none", "data-charge-path": style}, gOverlay);
+  el("path", {d, fill:"none", stroke:col, "stroke-width": style === "arrow" ? 2.4 : 1.6, opacity: style === "arrow" ? 0.85 : 0.3,
+    "stroke-linejoin":"round", "stroke-linecap":"round"}, g);
+  if (style === "flow") {
+    const p = el("path", {d, fill:"none", stroke:col, "stroke-width":2.6, "stroke-dasharray":"8 8", "stroke-linecap":"round", opacity:0.9}, g);
+    el("animate", {attributeName:"stroke-dashoffset", from:0, to:-16, dur:"0.4s", begin:"0s", repeatCount:"indefinite"}, p);
+  } else if (style === "comet") {
+    const dur = Math.max(0.5, len / px(CHARGE_SPEED));
+    for (const [r, op, lead] of [[4.2, 1, 0.1], [3.2, 0.6, 0.05], [2.3, 0.35, 0]]) {
+      // at (0, 0) until the motion places it, so hidden until then too; the head starts early
+      const c = el("circle", {r, fill:col, opacity:op, visibility:"hidden"}, g), begin = `${(-lead * dur).toFixed(3)}s`;
+      el("animateMotion", {path:d, dur:`${dur.toFixed(2)}s`, begin, repeatCount:"indefinite"}, c);
+      el("set", {attributeName:"visibility", to:"visible", begin}, c);
+    }
+  }
+  // arrowhead on the last leg, and the enemy's base where it would end up
+  const [ax, ay] = pts[pts.length - 2], [bx, by] = pts[pts.length - 1], a = Math.atan2(by - ay, bx - ax), s = 9;
+  const tip = (t, r) => `${(bx + Math.cos(a + t) * r).toFixed(1)},${(by + Math.sin(a + t) * r).toFixed(1)}`;
+  el("polygon", {points: [tip(0, 0), tip(Math.PI - 0.45, s), tip(Math.PI + 0.45, s)].join(" "), fill:col, opacity:0.9}, g);
+  el("circle", {cx:bx, cy:by, r:px(opR(o)), fill:col, "fill-opacity":0.08, stroke:col, "stroke-width":1.3,
+    "stroke-dasharray":"3 3", opacity:0.8}, g);
+}
 // The landing ghost under threat: a ring in the colour of the worst threat, a line from
 // each enemy that could reach it (solid red = charge, dashed amber = shoot without cover),
 // and who, under the move label.
-function threatGhost(at, [gx, gy], R) {
+function threatGhost(at, [gx, gy], R, routes) {
   const lvl = threatLevel(at);
   if (!lvl) return;
   for (const o of at.close) if (!at.charge.includes(o))
     el("line", {x1:px(o.x), y1:px(o.y), x2:px(gx), y2:px(gy), stroke:THREAT_COL.close, "stroke-width":2,
       "stroke-dasharray":"6 4", opacity:0.9, "pointer-events":"none"}, gOverlay);
-  for (const o of at.charge)
+  for (const o of at.charge) {
+    const route = routes && routes.get(o);
+    if (route && route.length > 1) { chargePath2D(o, route); continue; }
     el("line", {x1:px(o.x), y1:px(o.y), x2:px(gx), y2:px(gy), stroke:THREAT_COL.charge, "stroke-width":2.5,
       opacity:0.9, "pointer-events":"none"}, gOverlay);
+  }
   el("circle", {cx:px(gx), cy:px(gy), r:px(R)+5, fill:"none", stroke:THREAT_COL[lvl], "stroke-width":3.5, "data-threat-ghost":lvl}, gOverlay);
   el("text", {x:px(gx)+16, y:px(gy)+4, fill:THREAT_COL[lvl], stroke:"#14110e", "stroke-width":3, "paint-order":"stroke",
     "font-family":"'JetBrains Mono',monospace", "font-size":12, "font-weight":700}, gOverlay).textContent = threatLabel(at);
@@ -464,7 +499,7 @@ export function renderOverlay(cursor) {
       const lbl = el("text", {x:px(state.drag.goal[0])+16, y:px(state.drag.goal[1])-12, fill:col,
         "font-family":"'JetBrains Mono',monospace", "font-size":13, "font-weight":600}, gOverlay);
       lbl.textContent = dragLabelText();
-      if (threat) threatGhost(threat.at, state.drag.goal, R);
+      if (threat) threatGhost(threat.at, state.drag.goal, R, threat.routes);
     } else {
       el("line", {x1:px(state.drag.sx), y1:px(state.drag.sy), x2:px(state.drag.goal[0]), y2:px(state.drag.goal[1]),
         stroke:"#cf4f37", "stroke-width":2, "stroke-dasharray":"6 4"}, gOverlay);
