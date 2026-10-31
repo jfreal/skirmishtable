@@ -22,6 +22,7 @@ import { lineBlocked, visibilityPolygon } from '../engine/sight.js';
 import { opR, perimeterPts } from '../engine/geometry.js';
 import { addModels, ensureManifest, hasModels, progress, retryFailed, setRedraw, steamBytes, steamRemembered, useSteamSource } from './models.js';
 import { onMinisChange, unitObject } from './units.js';
+import { THREAT_COL, dragThreat, threatCanvas, threatLabel, threatLevel } from '../ui/threat.js';
 import { ACTIVE_STYLES, READY_STYLES, RING_T, animates, baseRing, classicBand, ringStyle, setRingStyle } from './rings.js';
 
 /* ---------- 3D table view ----------
@@ -335,12 +336,44 @@ function engageRing(g, x, y, R, z = 0) {
   ring.userData.engaged = true;
   g.add(ring);
 }
+// The threat zones (ui/threat.js) laid flat on the table: the same picture as the 2D map,
+// one texture kept until the zones or the style change.
+let threatTex = null;
+function threatSheet(g, map) {
+  const p = threatCanvas(map, state.threatStyle);
+  if (!threatTex || threatTex.src !== p) {
+    if (threatTex) { threatTex.mat.map.dispose(); threatTex.mat.dispose(); }
+    const mat = new THREE.MeshBasicMaterial({map: srgb(new THREE.CanvasTexture(p.canvas)), transparent: true, depthWrite: false});
+    mat.userData.shared = true;
+    threatTex = {src: p, mat};
+  }
+  const sheet = new THREE.Mesh(geo(`sheet ${BW}x${BH}`, () => new THREE.PlaneGeometry(BW, BH)), threatTex.mat);
+  sheet.rotation.x = -Math.PI / 2; sheet.position.set(BW / 2, 0.028, BH / 2); sheet.renderOrder = 2;
+  g.add(sheet);
+}
+// the landing ghost under threat, as on the 2D map: a ring in the colour of the worst
+// threat, a line from each enemy that could reach it, and who
+function threatGhost(g, at, [gx, gy], R, gz) {
+  const lvl = threatLevel(at);
+  if (!lvl) return;
+  const hex = c => parseInt(c.slice(1), 16);
+  for (const o of at.close) if (!at.charge.includes(o)) ribbon(g, o.x, o.y, (o.z || 0) + 0.5, gx, gy, gz + 0.5, 0.05, hex(THREAT_COL.close));
+  for (const o of at.charge) ribbon(g, o.x, o.y, (o.z || 0) + 0.5, gx, gy, gz + 0.5, 0.08, hex(THREAT_COL.charge));
+  const ring = new THREE.Mesh(torus(R + 0.22, 0.09, 40), flatMat(hex(THREAT_COL[lvl])));
+  ring.rotation.x = Math.PI / 2; ring.position.set(gx, gz + 0.08, gy);
+  g.add(ring);
+  const lab = cachedText(threatLabel(at), "#14110e", THREAT_COL[lvl], 0.7);
+  lab.position.set(gx, gz + 1.8, gy);
+  g.add(lab);
+}
 export function sync3DOverlay() {
   if (!three) return;
   const g = three.overlayGroup;
   clearGroup(g);
   const d = state.drag, eye = shotEye();
   if (eye) sightShade(g, eye);
+  const threat = dragThreat();
+  if (threat && state.threatStyle !== "warn") threatSheet(g, threat.map);
   if (d && d.active && d.goal) {
     const lift = 0.07, BR = opR(d.op);
     if (d.path) {
@@ -409,6 +442,7 @@ export function sync3DOverlay() {
     const label = cachedText(d.path ? dragLabelText() : "blocked", d.valid && d.path ? "#f5e9d8" : "#ffb4a6", "rgba(20,17,14,0.82)", 0.8);
     label.position.set(d.goal[0], gz + 2.6, d.goal[1]);
     g.add(label);
+    if (threat && d.path) threatGhost(g, threat.at, d.goal, BR, gz);
   }
   // the chosen target: the sight line the engine found, green, or a red line if none
   if (state.sel && state.target && state.target.alive && state.lastShot) {

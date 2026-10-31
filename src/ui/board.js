@@ -18,6 +18,7 @@ import { RULES, fmtIn, moveLabel } from '../rules/index.js';
 import { refreshSight, renderCard, renderShots, renderVerdict, tray } from './panels.js';
 import { opsState } from './ops.js';
 import { TTS_OPS } from '../data/tts-ops.js';
+import { THREAT_COL, dragThreat, threatImageURL, threatLabel, threatLevel } from './threat.js';
 export const MARKER_R = 0.45;   // marker tokens on the table (about 23mm across)
 import { sync3DOps, sync3DOverlay, three, view3D } from '../view3d/table3d.js';
 
@@ -360,6 +361,22 @@ export function dragLabelText() {
   else if (d.foes && d.foes.length) txt += ` → ${d.foes.map(f => f.name).join(", ")}`;
   return txt;
 }
+// The landing ghost under threat: a ring in the colour of the worst threat, a line from
+// each enemy that could reach it (solid red = charge, dashed amber = shoot without cover),
+// and who, under the move label.
+function threatGhost(at, [gx, gy], R) {
+  const lvl = threatLevel(at);
+  if (!lvl) return;
+  for (const o of at.close) if (!at.charge.includes(o))
+    el("line", {x1:px(o.x), y1:px(o.y), x2:px(gx), y2:px(gy), stroke:THREAT_COL.close, "stroke-width":2,
+      "stroke-dasharray":"6 4", opacity:0.9, "pointer-events":"none"}, gOverlay);
+  for (const o of at.charge)
+    el("line", {x1:px(o.x), y1:px(o.y), x2:px(gx), y2:px(gy), stroke:THREAT_COL.charge, "stroke-width":2.5,
+      opacity:0.9, "pointer-events":"none"}, gOverlay);
+  el("circle", {cx:px(gx), cy:px(gy), r:px(R)+5, fill:"none", stroke:THREAT_COL[lvl], "stroke-width":3.5, "data-threat-ghost":lvl}, gOverlay);
+  el("text", {x:px(gx)+16, y:px(gy)+4, fill:THREAT_COL[lvl], stroke:"#14110e", "stroke-width":3, "paint-order":"stroke",
+    "font-family":"'JetBrains Mono',monospace", "font-size":12, "font-weight":700}, gOverlay).textContent = threatLabel(at);
+}
 export function renderOverlay(cursor) {
   gOverlay.innerHTML = ""; gTags.innerHTML = "";
   const eye = shotEye();
@@ -367,6 +384,11 @@ export function renderOverlay(cursor) {
   if (view3D && three) { sync3DOverlay(); return; }   // the 3D table draws its own
   // visibility and valid shots: from the drag ghost while moving, else from the selected operative
   if (eye) renderShadows(eye);
+  // where the ready enemies could charge the moving base, or shoot it from inside the cover void
+  const threat = dragThreat();
+  if (threat && state.threatStyle !== "warn")
+    el("image", {href: threatImageURL(threat.map, state.threatStyle), x:0, y:0, width:px(BW), height:px(BH),
+      preserveAspectRatio:"none", "pointer-events":"none", "data-threat": state.threatStyle}, gOverlay);
   // ruler
   if (state.mode === "ruler" && state.rulerPts.length) {
     const [p1] = state.rulerPts, p2 = state.rulerPts[1] || cursor;
@@ -439,6 +461,7 @@ export function renderOverlay(cursor) {
       const lbl = el("text", {x:px(state.drag.goal[0])+16, y:px(state.drag.goal[1])-12, fill:col,
         "font-family":"'JetBrains Mono',monospace", "font-size":13, "font-weight":600}, gOverlay);
       lbl.textContent = dragLabelText();
+      if (threat) threatGhost(threat.at, state.drag.goal, R);
     } else {
       el("line", {x1:px(state.drag.sx), y1:px(state.drag.sy), x2:px(state.drag.goal[0]), y2:px(state.drag.goal[1]),
         stroke:"#cf4f37", "stroke-width":2, "stroke-dasharray":"6 4"}, gOverlay);
