@@ -61,4 +61,26 @@ describe("the host's check on the mission", () => {
     const mine = blank(); mine.tac[1] = 4; mine.score[1][0][1] = 2;
     expect(updateProblem(game(a), game(mine), 1)).toBeNull();
   });
+  it("keeps status cards to their side unless the host lets both edit both", () => {
+    const a = { ...blank(), notes: [[], []], noteEdit: "own" };
+    const card = { h: "Ploy", m: "Hold fast", s: "", by: null };
+    expect(updateProblem(game(a), game({ ...a, notes: [[], [card]] }), 1)).toBeNull();
+    expect(updateProblem(game(a), game({ ...a, notes: [[card], []] }), 1)).toMatch(/status cards belong/);
+    expect(updateProblem(game(a), game({ ...a, noteEdit: "any" }), 1)).toMatch(/host/);
+    const any = { ...a, noteEdit: "any" };
+    expect(updateProblem(game(any), game({ ...any, notes: [[{ ...card, by: 1 }], []] }), 1)).toBeNull();
+  });
+});
+
+describe('status cards from another browser', () => {
+  it('keeps up to 12 cards of short plain lines a side', () => {
+    const m = cleanMission({ notes: [
+      [{ h: 'Initiative', m: '+1', s: 'this TP', by: 7 }, null, 'x', { m: 'x'.repeat(99), s: 'a\nb' }],
+      Array.from({ length: 20 }, () => ({ m: 'n', by: 0 }))], noteEdit: 'any' }, TTS_OPS);
+    expect(m.notes[0]).toEqual([{ h: 'Initiative', m: '+1', s: 'this TP', by: null }, { h: '', m: 'x'.repeat(24), s: 'a b', by: null }]);
+    expect(m.notes[1]).toHaveLength(12);
+    expect(m.notes[1][0].by).toBe(0);
+    expect(m.noteEdit).toBe('any');
+    expect(cleanMission({}, TTS_OPS)).toMatchObject({ notes: [[], []], noteEdit: 'own' });
+  });
 });
