@@ -5,6 +5,7 @@
 const KEY = "skirmishtable.options";
 export const options = {panSpeed: 1};   // panSpeed: WASD camera pan, × the base speed
 try { Object.assign(options, JSON.parse(localStorage.getItem(KEY)) || {}); } catch (e) {}
+if (!(options.panSpeed >= 0.25 && options.panSpeed <= 3)) options.panSpeed = 1;   // a hand-edited or corrupt value must not NaN the camera
 function setOption(k, v) {
   options[k] = v;
   try { localStorage.setItem(KEY, JSON.stringify(options)); } catch (e) { /* private window: just don't remember */ }
