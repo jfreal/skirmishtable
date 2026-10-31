@@ -11,7 +11,7 @@ import { undoStack } from '../ui/panels.js';
 import { savePicture } from '../ui/picture.js';
 import { SOFT_MAX, decodeGame, encodeGame, isGameHash } from './link.js';
 import { applyGame, leaveGame, online, outGame } from './sync.js';
-import { restartRecording } from './replayer.js';
+import { leaveReplay, restartRecording } from './replayer.js';
 
 let lastLink = "", status = "";
 const when = at => at ? new Date(at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "an unknown time";
@@ -62,6 +62,7 @@ export async function openSharedGame(hash = location.hash) {
     return false;
   }
   if (online()) leaveGame();
+  leaveReplay();                             // a game on the table replaces any replay
   applyGame(g);
   undoStack.length = 0;                      // a fresh game: nothing from before to undo
   restartRecording();

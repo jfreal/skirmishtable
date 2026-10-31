@@ -18,6 +18,7 @@ import { LINK_V, OP_KEYS, packGame, unpackGame, unzipJSON, zipJSON } from './lin
 
 export const REPLAY_V = 1;
 export const MAX_STEPS = 3000;           // a long game is a few hundred
+export const MAX_OPS = 64;                 // operatives in one game; a replay claiming more is junk
 const HARD_MAX = 2000000;                // refuse to decode a link longer than this
 const PARTS = ["tray", "minis", "dice", "mission"];
 const LINES = 12, LINE_MAX = 400;        // log lines kept per step, and characters per line
@@ -88,6 +89,7 @@ export function unpackReplay(p) {
   if (!p || typeof p !== "object" || Array.isArray(p)) return null;
   if (p.v !== REPLAY_V) return { error: p.v > REPLAY_V ? "it was made by a newer SkirmishTable" : "its format is unknown" };
   if (!p.start || typeof p.start !== "object" || !Array.isArray(p.steps) || p.steps.length > MAX_STEPS) return null;
+  if (!Array.isArray(p.start.ops) || p.start.ops.length > MAX_OPS) return null;
   const first = unpackGame({ ...p.start, v: LINK_V, at: p.at });
   if (!first || first.error) return null;
   const { at, mapDef, ...g0 } = first;
@@ -96,7 +98,10 @@ export function unpackReplay(p) {
   for (const s of p.steps) {
     if (!s || typeof s !== "object") return null;
     const g = s.g && typeof s.g === "object" ? s.g : {};
-    if (Array.isArray(g.ops)) ops = g.ops;
+    if (Array.isArray(g.ops)) {
+      if (g.ops.length > MAX_OPS) return null;
+      ops = g.ops;
+    }
     else if (Array.isArray(s.o)) {
       ops = ops.map(a => Array.isArray(a) ? a.slice() : a);
       for (const d of s.o) {

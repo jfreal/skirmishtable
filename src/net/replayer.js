@@ -100,7 +100,7 @@ function show(i) {
   if (view.code) history.replaceState(null, "", base() + replayHash(view.code, view.i));
   renderBar();
 }
-function leave() {
+export function leaveReplay() {
   if (!state.replay) return;
   stopPlay();
   if (view.live) applyGame(view.live);    // still look-only here, so the recorder doesn't see it
@@ -183,7 +183,7 @@ function buildBar() {
     else hint("The address bar has the link to this step.");
   };
   $("rpon").onclick = playOn;
-  $("rpleave").onclick = leave;
+  $("rpleave").onclick = leaveReplay;
   b.hidden = false;
 }
 function renderBar() {
@@ -295,7 +295,8 @@ export function wireReplay() {
   });
   addEventListener("hashchange", () => {
     // our own replaceState never fires this; a pasted link or Back does
-    if (isReplayHash(location.hash) && !location.hash.startsWith(replayHash(view.code || "-", 0))) openReplayLink();
+    const own = state.replay && view.code && location.hash.split("&")[0] === replayHash(view.code);
+    if (isReplayHash(location.hash) && !own) openReplayLink();
   });
   renderReplayBox();
   return openReplayLink();

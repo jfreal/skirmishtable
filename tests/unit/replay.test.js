@@ -2,7 +2,7 @@
 // step off, turning points found, the link's length for a whole game, and junk refused.
 import { beforeAll, describe, expect, it } from 'vitest';
 import * as world from '../../src/engine/world.js';
-import { addStep, decodeReplay, encodeReplay, newRecording, packReplay, replayHash, steps, turnStarts, unpackReplay } from '../../src/net/replay.js';
+import { MAX_OPS, addStep, decodeReplay, encodeReplay, newRecording, packReplay, replayHash, steps, turnStarts, unpackReplay } from '../../src/net/replay.js';
 import { cleanOps } from '../../src/net/protocol.js';
 
 beforeAll(() => world.initMaps());
@@ -113,6 +113,9 @@ describe("replays", () => {
     const p = packReplay(rec);
     expect(unpackReplay({ ...p, steps: [{ o: [[999, 1, 5]] }] })).toBeNull();   // no such operative
     expect(unpackReplay({ ...p, steps: [{ o: [[0, 99, 5]] }] })).toBeNull();    // no such field
+    const many = Array.from({ length: MAX_OPS + 1 }, () => []);
+    expect(unpackReplay({ ...p, start: { ...p.start, ops: many } })).toBeNull();           // too many operatives at the start
+    expect(unpackReplay({ ...p, steps: [{ g: { ops: many } }] })).toBeNull();              // or in a step
     // a step past the end clamps to the last frame
     expect((await decodeReplay(replayHash(good, 99999))).step).toBe(steps(rec));
   });
