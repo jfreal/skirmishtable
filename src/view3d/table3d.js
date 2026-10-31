@@ -515,9 +515,48 @@ function init3D() {
   box.addEventListener("pointermove", ev => {
     if (!state.drag) renderer.domElement.style.cursor = tokenAt(ev) ? "grab" : "";
   });
+  panKeys();
   resize3D();
   window.addEventListener("resize", resize3D);
   setRedraw(() => requestRender(true));   // models and textures arriving (cut-outs shape shadows too)
+}
+// WASD slides the camera and its target over the table, along the ground, relative to where
+// the camera faces. Speed grows with zoom distance; the target stays over the board.
+const PAN_KEYS = {KeyW: [0, 1], KeyS: [0, -1], KeyA: [-1, 0], KeyD: [1, 0]};
+function panKeys() {
+  const held = new Set();
+  let last = 0;
+  const typing = el => el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName));
+  const step = t => {
+    if (!held.size || !view3D) { held.clear(); last = 0; return; }
+    const dt = last ? Math.min(0.05, (t - last) / 1000) : 0;
+    last = t;
+    const {camera, controls} = three;
+    const fwd = new THREE.Vector3().subVectors(controls.target, camera.position).setY(0);
+    if (fwd.lengthSq() < 1e-6) fwd.set(0, 0, -1).applyQuaternion(camera.quaternion).setY(0);   // top-down
+    fwd.normalize();
+    const right = new THREE.Vector3(-fwd.z, 0, fwd.x);
+    let f = 0, r = 0;
+    for (const k of held) { f += PAN_KEYS[k][1]; r += PAN_KEYS[k][0]; }
+    const move = fwd.multiplyScalar(f).add(right.multiplyScalar(r));
+    if (move.lengthSq()) {
+      move.normalize().multiplyScalar(camera.position.distanceTo(controls.target) * 0.6 * dt);
+      const tx = Math.max(0, Math.min(BW, controls.target.x + move.x)) - controls.target.x;
+      const tz = Math.max(0, Math.min(BH, controls.target.z + move.z)) - controls.target.z;
+      controls.target.x += tx; controls.target.z += tz;
+      camera.position.x += tx; camera.position.z += tz;
+      controls.update();
+    }
+    requestAnimationFrame(step);
+  };
+  document.addEventListener("keydown", ev => {
+    if (!PAN_KEYS[ev.code] || !view3D || ev.ctrlKey || ev.metaKey || ev.altKey || typing(ev.target)) return;
+    ev.preventDefault();
+    if (!held.size) requestAnimationFrame(step);
+    held.add(ev.code);
+  });
+  document.addEventListener("keyup", ev => held.delete(ev.code));
+  window.addEventListener("blur", () => held.clear());
 }
 function resize3D() {
   if (!three) return;
@@ -723,7 +762,7 @@ export function sync3DOps() {
 // The TTS models aren't on this server (third-party assets): say so instead of silently
 // showing block terrain, and offer to load them from Steam.
 const NOTE_NO_MODELS = `Block terrain: this site doesn't host the TTS models. Load them straight from Steam (${Math.round(steamBytes / 1e6)} MB, once).`;
-const NOTE3D = "Drag an operative to move it · drag the table to orbit, scroll to zoom · the ruler is on the 2D map.";
+const NOTE3D = "Drag an operative to move it · drag the table to orbit, scroll to zoom, WASD to pan · the ruler is on the 2D map.";
 function showModels(note) {
   const btn = document.getElementById("loadtts");
   btn.style.display = "none";
