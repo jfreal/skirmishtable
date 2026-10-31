@@ -286,6 +286,9 @@ button.hbug:hover, button.hbug[aria-expanded=true] { border-color: #e0672f; colo
 .hudsheet { position: absolute; z-index: 6; bottom: 46px; left: 50%; transform: translateX(-50%); width: min(520px, calc(100% - 16px));
   background: #1d1914; border: 1px solid #3a332a; border-radius: 8px; padding: 8px 10px; }
 .hudsheet[hidden], .hudtip[hidden] { display: none; }
+/* the dice box sits bottom-left on the table: the score bug and its sheet step aside to the right */
+.boardwrap:has(.dicemat:not([hidden])) .hudbot { justify-content: flex-end; padding-right: 10px; z-index: 7; }
+.boardwrap:has(.dicemat:not([hidden])) .hudsheet { left: auto; right: 8px; transform: none; z-index: 7; }
 .hsheethead { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;
   font-family: "Big Shoulders", sans-serif; text-transform: uppercase; letter-spacing: .1em; font-size: 13px; color: #c9bfae; }
 .hcprow { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
