@@ -307,6 +307,7 @@ function makeBox(side, dock) {
       else d.mode = "slot";
     }
     toSlots();
+    sync();   // a roll that landed in this tray while the dice were in the hand (Shoot / Fight)
   }
 
   /* ---------- buttons ---------- */
