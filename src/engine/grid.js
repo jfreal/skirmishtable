@@ -324,11 +324,8 @@ export function buildClearance() {
   }
   const c = clearance(open, G.nx, G.ny, 0, 0);
   if (scanned) {
-    const cs = clearance(scan, G.nx, G.ny, 0, 0);
-    for (let k = 0; k < n; k++) {
-      const x = (k % G.nx + 0.5) * GRES, y = ((k / G.nx | 0) + 0.5) * GRES;
-      c[k] = Math.min(c[k], cs[k] + SCAN_SLACK, x, BW - x, y, BH - y);
-    }
+    const cs = clearance(scan, G.nx, G.ny, 0, 0);       // already capped by the board edges
+    for (let k = 0; k < n; k++) c[k] = Math.min(c[k], cs[k] + SCAN_SLACK);
   }
   G.clear.set(c);
   for (let k = 0; k < n; k++) G.free[k] = G.clear[k] >= BASE_R - FREE_EPS ? 1 : 0;
