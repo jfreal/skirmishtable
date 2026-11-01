@@ -135,6 +135,28 @@ export function syncBases() {
   return any;
 }
 // The miniature for an operative, or null while it loads / when its side has no team.
+// Expended operatives' miniatures lose most of their colour. Every part gets its own material
+// (the idle-moving ones already have one) with a shader tweak, switched by one uniform per
+// operative, so marking one expended or ready again recompiles nothing.
+const SPENT_GLSL = `#include <map_fragment>
+  float spL = dot(diffuseColor.rgb, vec3(0.299, 0.587, 0.114));
+  diffuseColor.rgb = mix(diffuseColor.rgb, vec3(spL) * 0.8, uSpent * 0.8);`;
+function spentClone(obj) {
+  const u = { value: 0 };
+  obj.traverse(m => {
+    if (!m.isMesh) return;
+    const idle = !!m.geometry.userData.idle, prev = idle ? m.material.onBeforeCompile : null;
+    const mat = idle ? m.material : m.material.clone();   // idleClone already gave this one its own
+    mat.onBeforeCompile = function (shader, r) {
+      if (prev) prev.call(this, shader, r);
+      shader.uniforms.uSpent = u;
+      shader.fragmentShader = "uniform float uSpent;\n" + shader.fragmentShader.replace("#include <map_fragment>", SPENT_GLSL);
+    };
+    mat.customProgramCacheKey = () => idle ? "idle+spent" : "spent";   // the two patches compile apart
+    m.material = mat;
+  });
+  return u;
+}
 export function unitObject(op, r) {
   renderer = r;
   const model = modelOf(op);
@@ -148,7 +170,9 @@ export function unitObject(op, r) {
   if (!obj || obj.userData.src !== t) {
     obj = clones[op.id] = t.clone(); obj.userData = { ...t.userData, key, src: t };
     idleClone(obj, idlePhase(op.team + op.id));   // breathes in its own time
+    obj.userData.spent = spentClone(obj);
   }
+  obj.userData.spent.value = op.ready ? 0 : 1;    // greyed out once expended
   // fit the model's base to the operative's base (no base: the mod's inches), stand it on
   // the table, face the centre
   const k = t.userData.diameter ? 2 * opR(op) / t.userData.diameter : 1;

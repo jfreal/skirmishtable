@@ -218,6 +218,40 @@ test('right-click menu on the 2D token and the top bar: mark expended, undo an a
   await expect(page.locator('.opmenu')).toHaveCount(0);
 });
 
+test('an expended token greys out; Mark incapacitated takes it off the table, and its top-bar circle brings it back', async ({ page }) => {
+  await to2D(page);
+  await place(page, 'A2', 10.71, 7.48);
+  const tok = page.locator('#board g[data-oid="A2"]');
+  const filter = () => tok.evaluate(g => g.style.filter);
+  expect(await filter()).toBe('');
+  await page.locator('.hsq[data-oid="A2"]').click({ button: 'right' });
+  await page.locator('.opmenu button', { hasText: 'Mark expended' }).click();
+  expect(await filter()).toContain('grayscale');
+  // incapacitated: gone from the map, a cross in the top bar
+  const at = await toScreen(page, 10.71, 7.48);
+  await page.mouse.click(at.x, at.y, { button: 'right' });
+  await page.locator('.opmenu button', { hasText: 'Mark incapacitated' }).click();
+  await expect(tok).toHaveCount(0);
+  await expect(page.locator('.hsq[data-oid="A2"]')).toHaveClass(/dead/);
+  await expect(page.locator('#log p').first()).toContainText('incapacitated');
+  // its circle offers only Back on the table, which puts it back where it was
+  await page.locator('.hsq[data-oid="A2"]').click({ button: 'right' });
+  await expect(page.locator('.opmenu button')).toHaveCount(1);
+  await page.locator('.opmenu button', { hasText: 'Back on the table' }).click();
+  await expect(tok).toHaveCount(1);
+  expect(await kz(page, () => { const o = skirmishtable.world.OPS.find(o => o.id === 'A2'); return [o.alive, +o.x.toFixed(2), o.wounds > 0]; })).toEqual([true, 10.71, true]);
+  // someone moved onto its spot while it was down: it comes back beside them, not on top
+  await page.mouse.click(at.x, at.y, { button: 'right' });
+  await page.locator('.opmenu button', { hasText: 'Mark incapacitated' }).click();
+  await kz(page, () => { const o = skirmishtable.world.OPS.find(o => o.id === 'A3'); o.alive = true; o.x = 10.71; o.y = 7.48; o.z = 0; skirmishtable.renderAll(); });
+  await page.locator('.hsq[data-oid="A2"]').click({ button: 'right' });
+  await page.locator('.opmenu button', { hasText: 'Back on the table' }).click();
+  await expect(tok).toHaveCount(1);
+  await expect(page.locator('#log p').first()).toContainText('moved aside');
+  // its new spot is clear of A3 and of terrain
+  expect(await kz(page, () => { const a = skirmishtable.world.OPS.find(o => o.id === 'A2'); return skirmishtable.movement.placeBlocked(a.x, a.y, 'A2', 0); })).toBeNull();
+});
+
 test('right-click menu on the 3D model', async ({ page }) => {
   await place(page, 'A2', 10.71, 7.48);
   const m = await toScreen3D(page, 10.71, 7.48, 0.7);
