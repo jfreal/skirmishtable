@@ -246,7 +246,8 @@ function renderOps() {
   }
   for (const op of OPS) {
     if (!op.alive) continue;
-    const g = el("g", {"data-oid": op.id, cursor:"pointer", style:"touch-action:none"}, gOps);
+    // an expended operative's whole token (order chip and wounds too) loses most of its colour
+    const g = el("g", {"data-oid": op.id, cursor:"pointer", style:"touch-action:none" + (op.ready ? "" : ";filter:grayscale(.8) brightness(.85)")}, gOps);
     const R = opR(op);
     // generous invisible hit target so tokens are grabbable on touch screens
     el("circle", {cx:px(op.x), cy:px(op.y), r:px(R + 0.5), fill:"rgba(0,0,0,0)"}, g);
