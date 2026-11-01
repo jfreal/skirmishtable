@@ -16,7 +16,22 @@ import { idleClone, idleFields, idleGeometry, idlePhase } from './idle.js';
 const PREF = "skirmishtable.minis";
 // per side: the team mod's id (or null for plain tokens) and the model index per operative
 export const minis = { sides: [{ team: null, picks: {} }, { team: null, picks: {} }] };
-try { Object.assign(minis, JSON.parse(localStorage.getItem(PREF)) || {}); } catch (e) {}
+let saved = null;
+try { saved = JSON.parse(localStorage.getItem(PREF)); } catch (e) {}
+// a saved value is used only if it has the shape of `minis`; anything else counts as unsaved
+const validSide = x => x && typeof x === "object" && (x.team === null || typeof x.team === "string")
+  && x.picks && typeof x.picks === "object" && !Array.isArray(x.picks);
+const validSaved = v => v && Array.isArray(v.sides) && v.sides.length === 2 && v.sides.every(validSide);
+if (validSaved(saved)) Object.assign(minis, saved);
+else if (TTS_TEAMS.length > 1 && !(typeof navigator !== "undefined" && navigator.webdriver)) {
+  // first visit: two different random teams, so the table shows miniatures straight away
+  // (not under test automation, where the operatives' bases must stay predictable)
+  const a = Math.floor(Math.random() * TTS_TEAMS.length);
+  const b = (a + 1 + Math.floor(Math.random() * (TTS_TEAMS.length - 1))) % TTS_TEAMS.length;
+  minis.sides = [{ team: TTS_TEAMS[a].id, picks: {} }, { team: TTS_TEAMS[b].id, picks: {} }];
+  // keep the draw, or every reload would deal two new teams (and re-measure the bases) until a team is picked by hand
+  try { localStorage.setItem(PREF, JSON.stringify(minis)); } catch (e) {}
+}
 const listeners = [];
 export const onMinisChange = fn => listeners.push(fn);
 function changed() {

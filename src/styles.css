@@ -139,8 +139,6 @@ button.restricted { opacity: .5; }
   .engpulse { animation: engpulse 0.9s ease-in-out infinite; }
   @keyframes engpulse { 0%, 100% { opacity: .55; } 50% { opacity: 1; } }
 }
-footer { padding: 8px 16px 14px; color: #6e675c; font-size: 11px; }
-footer a { color: #b0764f; }
 @media (max-width: 760px) { aside { flex-basis: 100%; } }
 /* Miniatures panel: team per side, then a model per operative */
 .minirow { display: flex; align-items: center; gap: 8px; margin: 6px 0; }
@@ -388,3 +386,11 @@ table.hscore tfoot td { font-size: 14px; padding-top: 3px; }
 .opmenu button { text-align: left; border-color: transparent; background: transparent; padding: 5px 8px; }
 .opmenu button:hover:not(:disabled), .opmenu button:focus-visible { background: #2a2520; border-color: #e0672f; }
 .opmenu button.omdead { color: #e0302a; border-top: 1px solid #2a2520; border-radius: 0 0 6px 6px; margin-top: 2px; }
+
+/* Load from Steam: a soft pulsing glow so it reads as the thing to click */
+#loadtts { border-color: #e0672f; box-shadow: 0 0 6px 1px rgba(224, 103, 47, .55); animation: loadttsglow 2.4s ease-in-out infinite; }
+@keyframes loadttsglow {
+  0%, 100% { box-shadow: 0 0 4px 0 rgba(224, 103, 47, .4); }
+  50% { box-shadow: 0 0 12px 3px rgba(224, 103, 47, .75); }
+}
+@media (prefers-reduced-motion: reduce) { #loadtts { animation: none; } }
