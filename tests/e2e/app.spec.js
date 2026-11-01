@@ -224,6 +224,12 @@ test('right-click menu on the 3D model', async ({ page }) => {
   await page.mouse.click(m.x, m.y, { button: 'right' });
   await page.locator('.opmenu button', { hasText: 'Mark expended' }).click();
   expect((await a2(page))[2]).toBe(false);
+  // a right-drag from the model pans: no menu, whether contextmenu comes on the press or the release
+  await page.mouse.move(m.x, m.y);
+  await page.mouse.down({ button: 'right' });
+  for (let i = 1; i <= 5; i++) await page.mouse.move(m.x + 8 * i, m.y);
+  await page.mouse.up({ button: 'right' });
+  await expect(page.locator('.opmenu')).toHaveCount(0);
 });
 
 test('switches maps from the picker and undoes a move', async ({ page }) => {

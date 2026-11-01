@@ -596,7 +596,8 @@ function init3D() {
   }, {capture: true, passive: false});
   // right-click a model for its menu, unless the right button was dragging to pan
   // The contextmenu event can fire right at button-down (Mac, Linux), before any drag, so
-  // movement is tracked until release: a drag past 5px closes a menu already opened.
+  // movement is tracked until release: a drag past 5px closes a menu already opened. The state
+  // lasts until the next press, so it holds whichever order contextmenu and the drag come in.
   let rdown = null;
   box.addEventListener("pointerdown", ev => { rdown = ev.button === 2 ? {x: ev.clientX, y: ev.clientY, panned: false} : null; }, true);
   window.addEventListener("pointermove", ev => {
@@ -605,7 +606,6 @@ function init3D() {
   });
   box.addEventListener("contextmenu", ev => {
     const panned = rdown && rdown.panned;
-    rdown = null;
     const op = panned ? null : tokenAt(ev);
     if (op) { ev.preventDefault(); opMenuAt(op, ev); }
   });
