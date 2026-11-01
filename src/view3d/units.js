@@ -16,7 +16,16 @@ import { idleClone, idleFields, idleGeometry, idlePhase } from './idle.js';
 const PREF = "skirmishtable.minis";
 // per side: the team mod's id (or null for plain tokens) and the model index per operative
 export const minis = { sides: [{ team: null, picks: {} }, { team: null, picks: {} }] };
-try { Object.assign(minis, JSON.parse(localStorage.getItem(PREF)) || {}); } catch (e) {}
+let saved = null;
+try { saved = JSON.parse(localStorage.getItem(PREF)); } catch (e) {}
+if (saved) Object.assign(minis, saved);
+else if (TTS_TEAMS.length > 1 && !(typeof navigator !== "undefined" && navigator.webdriver)) {
+  // first visit: two different random teams, so the table shows miniatures straight away
+  // (not under test automation, where the operatives' bases must stay predictable)
+  const a = Math.floor(Math.random() * TTS_TEAMS.length);
+  const b = (a + 1 + Math.floor(Math.random() * (TTS_TEAMS.length - 1))) % TTS_TEAMS.length;
+  minis.sides = [{ team: TTS_TEAMS[a].id, picks: {} }, { team: TTS_TEAMS[b].id, picks: {} }];
+}
 const listeners = [];
 export const onMinisChange = fn => listeners.push(fn);
 function changed() {
