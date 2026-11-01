@@ -18,7 +18,11 @@ const PREF = "skirmishtable.minis";
 export const minis = { sides: [{ team: null, picks: {} }, { team: null, picks: {} }] };
 let saved = null;
 try { saved = JSON.parse(localStorage.getItem(PREF)); } catch (e) {}
-if (saved) Object.assign(minis, saved);
+// a saved value is used only if it has the shape of `minis`; anything else counts as unsaved
+const validSide = x => x && typeof x === "object" && (x.team === null || typeof x.team === "string")
+  && x.picks && typeof x.picks === "object" && !Array.isArray(x.picks);
+const validSaved = v => v && Array.isArray(v.sides) && v.sides.length === 2 && v.sides.every(validSide);
+if (validSaved(saved)) Object.assign(minis, saved);
 else if (TTS_TEAMS.length > 1 && !(typeof navigator !== "undefined" && navigator.webdriver)) {
   // first visit: two different random teams, so the table shows miniatures straight away
   // (not under test automation, where the operatives' bases must stay predictable)
