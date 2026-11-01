@@ -7,6 +7,7 @@ import { effHit, isInjured, rollAttack, rollDefence } from '../engine/dice.js';
 import { opGap } from '../engine/geometry.js';
 import { SHOT_KINDS, cannotShoot, judgeShot, shotsFrom } from '../engine/shots.js';
 import { OPS } from '../engine/world.js';
+import { nearestFree, opLayer } from '../engine/movement.js';
 import { SHOT_COL, renderAll } from './board.js';
 import { HINT0, fmtDice, hint, logLine } from './dom.js';
 import { RULES, fmtIn, moveSpec } from '../rules/index.js';
@@ -327,7 +328,15 @@ export function undoActivation(op) {
 // least 1 wound) if that was a mistake.
 export function setIncapacitated(op, down) {
   if (!op || op.alive !== down || !mayControl(op)) return;
+  // Movement lets others stand where a down operative was, so check its spot before
+  // restoring: slide to the nearest free spot, or keep it down if there is none.
+  let spot = null;
+  if (!down) {
+    spot = nearestFree(op.x, op.y, op.id, opLayer(op));
+    if (!spot) { logLine(`<b>${op.name}</b> can't come back: no free room where it fell.`, true); return; }
+  }
   snapshot();
+  if (spot) { op.x = spot[0]; op.y = spot[1]; }
   op.alive = !down;
   if (down) {
     if (state.sel === op) state.sel = null;
