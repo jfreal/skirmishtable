@@ -21,6 +21,7 @@ import { wireStatusCards } from './ui/statuscards.js';
 import { wireShare } from './net/share.js';
 import { wireReplay } from './net/replayer.js';
 import { wireInput } from './ui/input.js';
+import { wireOpMenu } from './ui/opmenu.js';
 import { wireThreatPicker } from './ui/threat.js';
 import { wireOptions } from './ui/options.js';
 import { wireSidePanel } from './ui/sidepanel.js';
@@ -29,6 +30,7 @@ import * as rules from './rules/index.js';
 import { onMinisChange } from './view3d/units.js';
 
 wireInput();
+wireOpMenu();
 wireHud();
 wireControls();
 table3d.wireViewToggle();
