@@ -11,6 +11,7 @@ import { snapBase } from '../config.js';
 import { opR } from '../engine/geometry.js';
 import { BH, BW, OPS } from '../engine/world.js';
 import { noteFailure, steamMaterial, steamParts } from './models.js';
+import { idleClone, idleFields, idleGeometry, idlePhase } from './idle.js';
 
 const PREF = "skirmishtable.minis";
 // per side: the team mod's id (or null for plain tokens) and the model index per operative
@@ -50,7 +51,7 @@ function findBase(meshes, all) {
     const b = new THREE.Box3().setFromObject(m), s = b.getSize(new THREE.Vector3());
     const w = Math.max(s.x, s.z), round = Math.min(s.x, s.z) / (w || 1);
     if (s.y < 0.25 * w && round > 0.8 && w > 0.4 * Math.max(overall.x, overall.z) && b.min.y - all.min.y < 0.1 * overall.y
-        && (!best || w > best.w)) best = { w, b };
+        && (!best || w > best.w)) best = { w, b, m };
   }
   return best;
 }
@@ -89,6 +90,14 @@ function template(model) {
     root.updateMatrixWorld(true);
     const all = new THREE.Box3().setFromObject(inner), base = findBase(inner.children, all);
     const foot = base ? base.b : all;
+    // idle motion (idle.js): every part but the base gets its displacement fields
+    const fc = foot.getCenter(new THREE.Vector3()), feet = base ? base.b.max.y : all.min.y;
+    const frame = { x: fc.x, z: fc.z, foot: feet, H: all.max.y - feet };
+    for (const m of inner.children) {
+      if (base && m === base.m) continue;
+      const f = idleFields(m.geometry.attributes.position.array, m.matrixWorld.elements, frame);
+      if (f) m.geometry = idleGeometry(m.geometry, f);
+    }
     // TTS units are inches: the base's diameter in mm, snapped to a real base size
     const mm = base ? snapBase(base.w * 25.4) : null;
     root.userData = { diameter: base ? base.w : null, mm, centre: foot.getCenter(new THREE.Vector3()), bottom: all.min.y };
@@ -136,7 +145,10 @@ export function unitObject(op, r) {
   if (!t) return null;                   // didn't download: the cylinder stands in
   // each operative keeps its clone (the table redraws on every change): only the matrix moves
   let obj = clones[op.id];
-  if (!obj || obj.userData.src !== t) { obj = clones[op.id] = t.clone(); obj.userData = { ...t.userData, key, src: t }; }
+  if (!obj || obj.userData.src !== t) {
+    obj = clones[op.id] = t.clone(); obj.userData = { ...t.userData, key, src: t };
+    idleClone(obj, idlePhase(op.team + op.id));   // breathes in its own time
+  }
   // fit the model's base to the operative's base (no base: the mod's inches), stand it on
   // the table, face the centre
   const k = t.userData.diameter ? 2 * opR(op) / t.userData.diameter : 1;

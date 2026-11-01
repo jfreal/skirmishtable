@@ -22,7 +22,8 @@ import { coneShadows, sightCone, visibilityPolygon } from '../engine/sight.js';
 import { opR } from '../engine/geometry.js';
 import { addModels, ensureManifest, hasModels, progress, retryFailed, setRedraw, steamBytes, steamRemembered, useSteamSource } from './models.js';
 import { onMinisChange, unitObject } from './units.js';
-import { options } from '../ui/options.js';
+import { onOptionChange, options } from '../ui/options.js';
+import { IDLE } from './idle.js';
 import { THREAT_COL, dragThreat, threatCanvas, threatLabel, threatLevel } from '../ui/threat.js';
 import { ACTIVE_STYLES, READY_STYLES, RING_T, animates, baseRing, classicBand, ringStyle, setRingStyle } from './rings.js';
 
@@ -52,21 +53,25 @@ export function requestRender(shadows = false) {
 }
 // Animated base rings (rings.js) need a frame every tick: a loop runs while any is on the
 // table in the 3D view, and stops on its own (it never redraws the shadow map).
-// The charge-path markers (threatGhost) ride the same loop.
-let animating = false, animLoop = false, pathAnims = [];
-function setAnimating(on) {
-  animating = on;
-  if (!(animating || pathAnims.length) || animLoop) return;
+// The charge-path markers (threatGhost) ride the same loop, and so do the miniatures'
+// idle motion (idle.js), which alone draws at most ~30 frames a second.
+let animating = false, idling = false, animLoop = false, pathAnims = [], lastFrame = 0;
+const looping = () => animating || idling || pathAnims.length > 0;
+function setAnimating(on, idle = idling) {
+  animating = on; idling = idle;
+  if (!looping() || animLoop) return;
   animLoop = true;
   const step = now => {
-    if (!(animating || pathAnims.length) || !view3D || !three) { animLoop = false; return; }
+    if (!looping() || !view3D || !three) { animLoop = false; return; }
     RING_T.value = now / 1000;
+    IDLE.t.value = now / 1000;
     for (const pa of pathAnims) tickPath(pa, now / 1000);
-    requestRender();
+    if (animating || pathAnims.length || now - lastFrame > 30) { lastFrame = now; requestRender(); }
     requestAnimationFrame(step);
   };
   requestAnimationFrame(step);
 }
+onOptionChange(k => { if (k === "idle" && three) sync3DOps(); });
 // Geometries shared by every operative, marker and overlay piece (scaled per use), so a
 // redraw never allocates GPU buffers. Keyed by their shape; clearGroup leaves them alone.
 const sharedGeo = {};
@@ -771,7 +776,7 @@ export function sync3DOps() {
     ribbon(g, a.x, a.y, (a.z || 0) + 0.1, b.x, b.y, (b.z || 0) + 0.1, 0.07, ENGAGE_HEX);
     engageRing(g, a.x, a.y, opR(a), a.z); engageRing(g, b.x, b.y, opR(b), b.z);
   }
-  let anim = false;
+  let anim = false, minis = false;
   for (const op of OPS) {
     if (!op.alive) continue;
     const og = new THREE.Group();     // everything of this operative's, lifted onto the floor it stands on
@@ -788,7 +793,7 @@ export function sync3DOps() {
     body.castShadow = !mini;
     body.userData.oid = op.id;        // picked by tokenAt()
     og.add(body);
-    if (mini) og.add(mini);
+    if (mini) { og.add(mini); minis = true; }
     if (mini && classicBand()) {
       const band = new THREE.Mesh(torus(BR + 0.06, 0.05, 32), flatMat(colHex));
       band.rotation.x = Math.PI / 2; band.position.set(op.x, 0.04, op.y);
@@ -835,7 +840,9 @@ export function sync3DOps() {
     wl.position.set(op.x, 1.62, op.y);
     og.add(wl);
   }
-  setAnimating(anim);
+  const idle = minis && options.idle === "on";
+  IDLE.on.value = idle ? 1 : 0;       // off: they stand in the rest pose
+  setAnimating(anim, idle);
   requestRender(true);
 }
 // "Where is it?": a glow that rises round an operative, breathes a few times and fades,
