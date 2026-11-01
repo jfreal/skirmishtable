@@ -14,15 +14,21 @@ import { net, online } from '../net/sync.js';
 import { onOptionChange, options } from './options.js';
 import { mayNote, mayNoteSetUp, opsState, setNoteEdit, setNotes } from './ops.js';
 
-const LEN = { h: 30, m: 24, s: 90 };   // the same caps the host applies (protocol.js)
+const LEN = { h: 30, m: 24, s: 90 }, MAX = 12;   // the same caps the host applies (protocol.js)
 const open = [new Set(), new Set()];   // chips open in this browser
 const drawer = [false, false];
-let editing = null;                    // { s, i, orig } — orig is the card as it was when opened; null for a new card
-const MAX = 12;                        // the cleaner keeps no more than this per side
-const stamp = n => JSON.stringify([n.h, n.m, n.s, n.by]);
-// An open edit belongs to a card, not a position: if that card moved, changed or went (the other
-// player edited this side), the edit is dropped rather than saved over a different card.
-const stale = () => editing && editing.orig !== null && (!opsState.notes[editing.s][editing.i] || stamp(opsState.notes[editing.s][editing.i]) !== editing.orig);
+// { s, i, was } — was: the card as it stood when editing began (null for a new card, which
+// goes one past the end). The other player may add or remove cards meanwhile.
+let editing = null;
+const sameCard = (a, b) => a.h === b.h && a.m === b.m && a.s === b.s;
+// follow the card being edited to wherever it now sits; drop the edit if it's gone or changed
+function locate() {
+  if (!editing) return;
+  const notes = opsState.notes[editing.s];
+  const here = editing.was && notes[editing.i] && sameCard(notes[editing.i], editing.was);   // twins: keep the one in place
+  editing.i = !editing.was ? notes.length : here ? editing.i : notes.findIndex(n => sameCard(n, editing.was));
+  if (editing.i < 0 || !editing.was && notes.length >= MAX || !mayNote(editing.s)) editing = null;
+}
 const esc = t => String(t).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 const LOCK = '<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="7" width="10" height="7" rx="1.5"/><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2"/></svg>';
 
@@ -43,7 +49,7 @@ function cardHTML(s, i) {
 }
 function dockHTML(s) {
   const notes = opsState.notes[s], adding = editing && editing.s === s && editing.i === notes.length;
-  const add = notes.length < MAX && mayNote(s) && !adding ? `<button class="scadd" data-act="add" title="Add a status card for ${TEAMNAME[s]}">+ card</button>` : "";
+  const add = mayNote(s) && !adding && notes.length < MAX ? `<button class="scadd" data-act="add" title="Add a status card for ${TEAMNAME[s]}">+ card</button>` : "";
   const who = online() && mayNoteSetUp() && s === 0
     ? `<button class="scadd" data-act="who" title="Who may edit the status cards (you're the host)">${opsState.noteEdit === "any" ? "both edit both" : "own side only"}</button>` : "";
   const cards = notes.map((_, i) => i);
@@ -62,8 +68,7 @@ export function renderStatusCards() {
     const dock = document.getElementById("scards" + s);
     if (!dock) continue;
     for (const i of [...open[s]]) if (i >= opsState.notes[s].length) open[s].delete(i);
-    if (editing && editing.s === s && editing.orig === null && opsState.notes[s].length < MAX) editing.i = opsState.notes[s].length;   // a new card always goes last
-    if (editing && editing.s === s && (editing.i > opsState.notes[s].length || !mayNote(s) || stale())) editing = null;
+    if (editing && editing.s === s) locate();
     // only rewrite what changed, and never under someone's typing
     const html = dockHTML(s);
     if (dock._html === html || editing && editing.s === s && dock.querySelector("form") && dock.contains(document.activeElement)) continue;
@@ -74,17 +79,15 @@ export function renderStatusCards() {
 }
 
 function save(s, form) {
-  if (!editing || editing.s !== s || stale()) { editing = null; renderStatusCards(); return; }
-  const i = editing.i;
-  const val = k => form.querySelector(`[data-f="${k}"]`).value.trim().slice(0, LEN[k]);
+  locate();
+  if (!editing) { renderStatusCards(); return; }
+  const i = editing.i, val = k => form.querySelector(`[data-f="${k}"]`).value.trim().slice(0, LEN[k]);
   const card = { h: val("h"), m: val("m"), s: val("s"), by: online() && net.seat !== s && (net.seat === 0 || net.seat === 1) ? net.seat : null };
-  const list = opsState.notes[s].map(n => ({ ...n })), isNew = editing.orig === null;
+  const list = opsState.notes[s].map(n => ({ ...n })), isNew = i >= list.length;
   editing = null;
   if (!card.h && !card.m && !card.s) { renderStatusCards(); return; }   // an empty new card: nothing to keep
-  if (isNew && list.length >= MAX) { renderStatusCards(); return; }
-  const at = isNew ? list.length : i;
-  list[at] = card;
-  if (options.cardLayout === "chips") open[s].add(at);
+  list[i] = card;
+  if (options.cardLayout === "chips") open[s].add(i);
   setNotes(s, list, `<b>${TEAMNAME[s]}</b> status card ${isNew ? "added" : "changed"}: <b>${esc(card.m || card.h)}</b>${card.s ? " — " + esc(card.s) : ""}.`);
 }
 function remove(s, i) {
@@ -104,10 +107,10 @@ export function wireStatusCards() {
       if (act === "open") open[s].add(i);
       else if (act === "close") open[s].delete(i);
       else if (act === "drawer") drawer[s] = !drawer[s];
-      else if (act === "edit" && mayNote(s) && opsState.notes[s][i]) editing = { s, i, orig: stamp(opsState.notes[s][i]) };
-      else if (act === "add" && mayNote(s) && opsState.notes[s].length < MAX) { editing = { s, i: opsState.notes[s].length, orig: null }; drawer[s] = true; }
+      else if (act === "edit" && mayNote(s) && opsState.notes[s][i]) editing = { s, i, was: { ...opsState.notes[s][i] } };
+      else if (act === "add" && mayNote(s) && opsState.notes[s].length < MAX) { editing = { s, i: opsState.notes[s].length, was: null }; drawer[s] = true; }
       else if (act === "cancel") editing = null;
-      else if (act === "del" && mayNote(s) && !stale()) { remove(s, i); return; }
+      else if (act === "del" && mayNote(s)) { locate(); if (editing && editing.was) { remove(s, editing.i); return; } }
       else if (act === "who" && mayNoteSetUp()) { setNoteEdit(opsState.noteEdit === "any" ? "own" : "any"); return; }
       dock._html = null; renderStatusCards();
     });

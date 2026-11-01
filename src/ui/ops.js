@@ -185,7 +185,7 @@ export function setScore(s, tp, c, value, render = true) {
 export const mayNote = s => opsState.noteEdit === "any" ? mine(0) || mine(1) : mine(s);
 export const mayNoteSetUp = () => host();
 export function setNotes(s, list, line) {
-  snapshot(); opsState.notes[s] = list.slice(0, 12);
+  snapshot(); opsState.notes[s] = list.slice(0, 12);   // the host keeps 12 a side (protocol.js)
   if (line) logLine(line);
   changed(false);
 }
