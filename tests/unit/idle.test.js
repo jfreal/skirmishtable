@@ -36,6 +36,15 @@ describe('idle motion fields', () => {
     const g = idleFields(local, M, frame), [x, y, z] = at(g.breath, 0), [, Y, Z] = at(f.breath, 1);
     expect(x).toBeCloseTo(0); expect(2 * y).toBeCloseTo(Y); expect(-2 * z).toBeCloseTo(Z);
   });
+  it('bounds how far any vertex can move', () => {
+    let most = 0;
+    for (let v = 0; v < 4; v++) {
+      const len = k => Math.hypot(...at(f[k], v));
+      most = Math.max(most, len('breath') + 1.3 * len('lean') + len('side'));
+    }
+    expect(f.reach).toBeCloseTo(most);
+    expect(f.reach).toBeGreaterThan(0);
+  });
   it('gives each operative a steady phase of its own', () => {
     expect(idlePhase('0A1')).toBe(idlePhase('0A1'));
     expect(idlePhase('0A1')).not.toBe(idlePhase('0A2'));

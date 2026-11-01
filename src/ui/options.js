@@ -9,15 +9,17 @@ const KEY = "skirmishtable.options";
 // breathe and shift their weight on the 3D table (off by default if the system asks for less motion)
 const calm = typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
 export const options = {panSpeed: 1, cardLayout: "chips", idle: calm ? "off" : "on"};
-try { Object.assign(options, JSON.parse(localStorage.getItem(KEY)) || {}); } catch (e) {}
+// only what the player set is stored, so a default (idle under reduced motion) stays a default
+let stored = {};
+try { stored = JSON.parse(localStorage.getItem(KEY)) || {}; Object.assign(options, stored); } catch (e) {}
 if (!(options.panSpeed >= 0.25 && options.panSpeed <= 3)) options.panSpeed = 1;   // a hand-edited or corrupt value must not NaN the camera
 if (!["chips", "drawer"].includes(options.cardLayout)) options.cardLayout = "chips";
 if (!["on", "off"].includes(options.idle)) options.idle = calm ? "off" : "on";
 const hooks = [];
 export const onOptionChange = fn => hooks.push(fn);
 function setOption(k, v) {
-  options[k] = v;
-  try { localStorage.setItem(KEY, JSON.stringify(options)); } catch (e) { /* private window: just don't remember */ }
+  options[k] = v; stored[k] = v;
+  try { localStorage.setItem(KEY, JSON.stringify(stored)); } catch (e) { /* private window: just don't remember */ }
   for (const fn of hooks) fn(k);
 }
 

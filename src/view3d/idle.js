@@ -37,7 +37,8 @@ function inv3(M) {
  * 16, as THREE.Matrix4.elements); f: the model's frame, y up, facing +z — {x, z} the centre
  * of its foot, `foot` the height its feet stand on, `H` its height above that.
  * Returns {breath, lean, side} (Float32Arrays, 3 per vertex: the displacement at a full
- * breath / one radian of lean scaled by LEAN / SIDE), or null if nothing on it moves.
+ * breath / one radian of lean scaled by LEAN / SIDE) and `reach`, the furthest a vertex
+ * can move, or null if nothing on it moves.
  */
 export function idleFields(pos, M, f) {
   const n = pos.length / 3, Mi = inv3(M), H = f.H;
@@ -69,7 +70,13 @@ export function idleFields(pos, M, f) {
     put(lean, j, 0, -dz * k * LEAN, ry * k * LEAN);   // about the x axis: forward and back
     put(side, j, -ry * k * SIDE, dx * k * SIDE, 0);   // about the z axis: side to side
   }
-  return any ? { breath, lean, side } : null;
+  if (!any) return null;
+  // the furthest any vertex can move (the shader's lean wave peaks at 1.3)
+  let most = 0;
+  for (let j = 0; j < n * 3; j += 3)
+    most = Math.max(most, Math.hypot(breath[j], breath[j + 1], breath[j + 2])
+      + 1.3 * Math.hypot(lean[j], lean[j + 1], lean[j + 2]) + Math.hypot(side[j], side[j + 1], side[j + 2]));
+  return { breath, lean, side, reach: most };
 }
 
 // shared by every miniature: the clock (seconds) and the switch (0 still, 1 moving)
@@ -82,7 +89,7 @@ export function idleGeometry(g, fields) {
   out.setIndex(g.index);
   for (const gr of g.groups) out.addGroup(gr.start, gr.count, gr.materialIndex);
   out.boundingSphere = g.boundingSphere && g.boundingSphere.clone();
-  if (out.boundingSphere) out.boundingSphere.radius *= 1.05;   // the motion stays well inside 5%
+  if (out.boundingSphere) out.boundingSphere.radius += fields.reach;   // never culled while it shows
   out.setAttribute("aBreath", new THREE.BufferAttribute(fields.breath, 3));
   out.setAttribute("aLean", new THREE.BufferAttribute(fields.lean, 3));
   out.setAttribute("aSide", new THREE.BufferAttribute(fields.side, 3));
