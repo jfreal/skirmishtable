@@ -323,6 +323,22 @@ export function undoActivation(op) {
   logLine(`<b>${op.name}</b> activation undone${here ? " — back where it started" : ""}, ready again.`);
   cancelMode(); refreshSight(); renderAll();
 }
+// Take an operative off the table as incapacitated (down = true), or put it back (with at
+// least 1 wound) if that was a mistake.
+export function setIncapacitated(op, down) {
+  if (!op || op.alive !== down || !mayControl(op)) return;
+  snapshot();
+  op.alive = !down;
+  if (down) {
+    if (state.sel === op) state.sel = null;
+    if (state.target === op) state.target = null;
+    logLine(`<b>${op.name}</b> is incapacitated — off the table.`, true);
+  } else {
+    op.wounds = Math.max(1, op.wounds);
+    logLine(`<b>${op.name}</b> is back on the table (${op.wounds}W).`);
+  }
+  cancelMode(); refreshSight(); renderAll();
+}
 export function cancelMode() { state.mode = null; state.drag = null; state.rulerPts = []; hint(HINT0); }
 // Judge the shot at the chosen target from where the selected operative stands.
 export function refreshSight() {
