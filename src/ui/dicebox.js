@@ -9,8 +9,11 @@
  * selected by clicking or by dragging a box round them. Each die re-rolls once; after that
  * it stays in its slot, marked with a dot. Shoot / Fight dice and the other
  * player's rolls tumble through their box too, so everyone sees them land.
+ *
+ * The faces come from rollFor (src/net/roll.js) as the dice leave the hand: right away
+ * offline; online, the shared roll a moment later, while the dice are already tumbling.
  */
-import { d6 } from '../engine/dice.js';
+import { fairNote, rollFor } from '../net/roll.js';
 import { TEAMNAME } from '../config.js';
 import { clearDice, diceTrays, mayRoll, onDiceRender, rerollDice, setHit, setRoll, tally, wasRerolled } from './dicetray.js';
 import { atRest, handOffsets, shaker, slotSpots, speed, stepDice } from './dicephys.js';
@@ -66,6 +69,7 @@ function makeBox(side, dock) {
   // mode: loose (on the mat, not rolled) · held · rolling · glide (sliding to a spot) · slot
   let open = false, geo = null, hand = null;
   let raf = 0, lastT = 0, rollT0 = 0, settleT = 0;
+  let landing = null;              // the roll in the air: {done, n} once its faces are known
 
   const mat = document.createElement("div");
   mat.className = "dicemat"; mat.id = "dicemat" + side; mat.hidden = true;
@@ -166,9 +170,10 @@ function makeBox(side, dock) {
       if (hit > 90) clack(hit);
       for (const d of rolling) {
         if (speed(d) > 70) { if (t - d.flick > 65) { d.face = 1 + Math.floor(Math.random() * 6); d.flick = t; } }
-        else d.face = d.val;   // tumbling over: the face it was always going to land on
+        else if (d.val != null) d.face = d.val;   // tumbling over: the face it was always going to land on
       }
-      if (rolling.every(atRest)) { if (!settleT) settleT = t; else if (t - settleT > 300) settle(rolling); }
+      // (online, the faces may still be on their way: the dice wait for them)
+      if (rolling.every(atRest) && rolling.every(d => d.val != null)) { if (!settleT) settleT = t; else if (t - settleT > 300) settle(rolling); }
       else settleT = 0;
     }
     for (const d of dice) if (d.mode === "glide") {
@@ -205,6 +210,8 @@ function makeBox(side, dock) {
     settleT = 0;
     const thrown = rolling.filter(d => d.commit);
     for (const d of rolling) { d.mode = "glide"; d.commit = false; d.face = d.val; }
+    const note = landing ? fairNote(landing.n) : "";
+    if (landing) { landing.done(); landing = null; }
     if (thrown.length) {
       const fresh = thrown.filter(d => d.idx == null);
       if (fresh.length) {
@@ -213,27 +220,53 @@ function makeBox(side, dock) {
         const used = [...tray().rerolled, ...thrown.filter(d => d.idx != null).map(d => d.idx)];
         const all = [...dice.filter(d => d.idx != null).sort((a, b) => a.idx - b.idx), ...fresh];
         all.forEach((d, i) => d.idx = i);
-        setRoll(all.map(d => d.val), side, "", used);
-      } else rerollDice(side, thrown.map(d => d.idx), thrown.map(d => d.val));
+        setRoll(all.map(d => d.val), side, "", used, note);
+      } else rerollDice(side, thrown.map(d => d.idx), thrown.map(d => d.val), note);
     }
     toSlots();
     sync();   // anything that changed in the tray while these were in the air
   }
 
+  // Throw these dice: false if no roll can start now (the dice stay as they were).
   function throwDice(group, v) {
+    if (landing || dice.some(d => d.mode === "rolling" && d.commit)) return false;   // one roll in the air at a time
     const b = geo.box;
     let [vx, vy] = v;
     const s = Math.hypot(vx, vy);
     if (s > 1500) { vx *= 1500 / s; vy *= 1500 / s; }
+    // the dice in the order their faces are drawn: slotted ones thrown again, then new ones
+    const order = [...group.filter(d => d.idx != null), ...group.filter(d => d.idx == null)];
+    for (const d of order) d.back = { mode: d.mode === "held" ? d.from : d.mode, val: d.val };
     for (const d of group) {
       clampTo(b, d);
       const a = rnd(0, 2 * Math.PI), toss = rnd(200, 460);
-      Object.assign(d, { mode: "rolling", commit: true, val: d6(), sel: false,
+      Object.assign(d, { mode: "rolling", commit: true, val: null, sel: false,
                          vx: vx * 0.8 + Math.cos(a) * toss, vy: vy * 0.8 + Math.sin(a) * toss, vr: rnd(-1400, 1400) });
     }
+    const what = { k: "tray", side, idx: order.filter(d => d.idx != null).map(d => d.idx), add: order.filter(d => d.idx == null).length };
+    landing = { done: () => {}, n: null, wait: true };
+    const why = rollFor(what, (die, done, n) => {
+      for (const d of order) d.val = die();
+      landing = { done, n };
+      kick();
+    }, why => { putBack(order); sum.innerHTML = `<span class="hint">The roll didn't happen: ${why}.</span>`; });
+    if (why) { putBack(order); sum.innerHTML = `<span class="hint">Can't roll yet: ${why}.</span>`; return false; }
     rollT0 = performance.now(); settleT = 0;
     clack(1200);
     kick();
+    return true;
+  }
+  // a roll that couldn't happen: the dice go back where they were
+  function putBack(group) {
+    landing = null;
+    for (const d of group) {
+      if (!dice.includes(d)) continue;
+      Object.assign(d, { mode: d.back.mode === "loose" ? "loose" : "slot", val: d.back.val, commit: false, vx: 0, vy: 0 });
+      if (d.val != null) d.face = d.val;
+      if (d.mode === "loose" && geo) clampTo(geo.felt, d);
+    }
+    toSlots();
+    sync();
   }
   // dice that arrive from elsewhere (Shoot / Fight, the other player) roll in from the box's
   // left edge, already knowing their faces
@@ -305,7 +338,7 @@ function makeBox(side, dock) {
       return;
     }
     if (!h.lifted) { h.die.sel = !h.die.sel; draw(h.die); return; }   // a click picks dice to carry
-    if (ev.type !== "pointercancel" && inside(geo.outer, h.px, h.py)) { throwDice(h.group, h.sh.velocity(ev.timeStamp || performance.now())); return; }
+    if (ev.type !== "pointercancel" && inside(geo.outer, h.px, h.py) && throwDice(h.group, h.sh.velocity(ev.timeStamp || performance.now()))) return;
     // put down outside the box: loose dice stay where they fell, rolled dice go back to their slots
     for (const d of h.group) {
       if (d.from === "loose") { d.mode = "loose"; const p = { x: d.x, y: d.y }; clampTo(geo.felt, p); glide(d, p.x, p.y, "loose", 0, d.rot); }
@@ -317,6 +350,7 @@ function makeBox(side, dock) {
 
   /* ---------- buttons ---------- */
   function spawn(n, add) {
+    if (landing) return;              // a roll is in the air: let it land first
     measure();
     if (!add) {
       for (const d of [...dice]) removeDie(d);
@@ -334,10 +368,10 @@ function makeBox(side, dock) {
   function autoThrow() {
     measure();
     const sel = dice.filter(d => d.sel && grabbable(d)), group = sel.length ? sel : dice.filter(d => d.mode === "loose");
-    if (!group.length) return;
-    const b = geo.box;
+    if (!group.length || landing) return;
+    const b = geo.box, was = group.map(d => [d.x, d.y]);
     for (const d of group) { d.x = b.x0 + R + rnd(0, 20); d.y = rnd(b.y0 + R, b.y1 - R); }
-    throwDice(group, [rnd(700, 1000), rnd(-200, 200)]);
+    if (!throwDice(group, [rnd(700, 1000), rnd(-200, 200)])) group.forEach((d, i) => { [d.x, d.y] = was[i]; draw(d); });
   }
   function updateBar() {
     const off = !mayRoll(side), t = tray();

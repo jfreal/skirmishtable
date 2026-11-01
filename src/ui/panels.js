@@ -3,15 +3,16 @@
  */
 import { state } from '../state.js';
 import { CTRL, TEAMCOL_LT, WPN } from '../config.js';
-import { effHit, isInjured, rollAttack, rollDefence } from '../engine/dice.js';
+import { effHit, fightRoll, isInjured, meleeKey, shootRoll } from '../engine/dice.js';
 import { opGap } from '../engine/geometry.js';
 import { SHOT_KINDS, cannotShoot, judgeShot, shotsFrom } from '../engine/shots.js';
 import { OPS } from '../engine/world.js';
 import { SHOT_COL, renderAll } from './board.js';
 import { HINT0, fmtDice, hint, logLine } from './dom.js';
 import { RULES, fmtIn, moveSpec } from '../rules/index.js';
-import { mayControl } from '../net/sync.js';
+import { mayControl, online } from '../net/sync.js';
 import { showRoll } from './dicetray.js';
+import { fairNote, rollFor } from '../net/roll.js';
 
 /* ---------- state / undo / log ---------- */
 export let tray = {tp:1, cp:[3,3], vp:[0,0]};
@@ -23,13 +24,15 @@ export function snapshot() {
   if (undoStack.length > 40) undoStack.shift();
 }
 export function doUndo() {
-  const s = undoStack.pop(); if (!s) return;
+  const s = undoStack.pop();
+  if (!s) { hint(online() ? "Nothing to undo. Online, a shared roll can't be taken back." : "Nothing to undo."); return false; }
   const o = JSON.parse(s); OPS.splice(0, OPS.length, ...o.ops); Object.assign(tray, o.tray);
   if (o.extras) undoExtras.forEach((x, i) => { if (o.extras[i] !== undefined) x.set(o.extras[i]); });
   if (state.sel) state.sel = OPS.find(x => x.id === state.sel.id) || null;
   state.target = null; state.lastShot = null; cancelMode();
   logLine("Undid last action.");
   renderAll();
+  return true;
 }
 
 /* ---------- combat ---------- */
@@ -45,73 +48,58 @@ function doShoot() {
     logLine(`<b>${state.target.name}</b> is not a valid target — ${shot ? shotWhy(shot) : "no target"}.`);
     renderAll(); return;
   }
-  snapshot();
-  // Accurate (from a Vantage Point): that many attack dice kept as normal successes unrolled
-  const acc = Math.min(shot.accurate, w.atk);
-  const a = rollAttack(w.atk - acc, effHit(state.sel, w), w.rules);
-  showRoll(a.dice, effHit(state.sel, w), state.sel.team, `${state.sel.name} shoots`);
-  let aCrit = a.crit, aNorm = a.norm + acc, notes = [];
-  if (acc) notes.push(`Accurate ${acc}`);
-  if (shot.obscured) { // crits become normal, then discard one success
-    aNorm += aCrit; aCrit = 0;
-    if (aNorm > 0) aNorm--;
-    notes.push("obscured: crits downgraded, one success discarded");
-  }
-  const dfn = rollDefence(state.target.save, shot.save);
-  showRoll(dfn.dice, state.target.save, state.target.team, `${state.target.name} saves${dfn.cover ? " (+cover)" : ""}`);
-  if (dfn.cover) notes.push("cover save banked");
-  let dCrit = dfn.crit, dNorm = dfn.norm;
-  // resolve defence: crits block crits first, then normals; two normals stop a crit
-  while (dCrit > 0) { if (aCrit > 0) {aCrit--; dCrit--;} else if (aNorm > 0) {aNorm--; dCrit--;} else break; }
-  while (dNorm > 0) {
-    if (aNorm > 0) {aNorm--; dNorm--;}
-    else if (dNorm >= 2 && aCrit > 0) {aCrit--; dNorm -= 2;}
-    else break;
-  }
-  const dmg = aNorm * w.dmgN + aCrit * w.dmgC;
-  state.target.wounds = Math.max(0, state.target.wounds - dmg);
-  state.sel.ap -= 1; state.sel.used.push("shoot");
-  let line = `<b>${state.sel.name}</b> shoots <b>${state.target.name}</b> with ${w.name} — ` +
-    `<span class="dice">atk [${fmtDice(a.dice)}] def [${fmtDice(dfn.dice)}${dfn.cover?" +cover":""}]</span> → ` +
-    `<b>${dmg} dmg</b>${notes.length ? " <span class='dice'>("+notes.join("; ")+")</span>" : ""}`;
-  if (state.target.wounds === 0) { state.target.alive = false; line += " — <b>incapacitated!</b>"; }
-  else if (isInjured(state.target)) line += " — injured";
-  logLine(line, dmg > 0);
+  // what is rolled for: the shot as this table judges it, fixed before the dice are known
+  const what = {k: "shoot", by: state.sel.id, at: state.target.id, w: state.sel.weapon,
+                acc: Math.min(shot.accurate, w.atk), obsc: !!shot.obscured, cover: !!shot.save};
+  const why = rollFor(what, (die, done, n) => {
+    const a = OPS.find(o => o.id === what.by), b = OPS.find(o => o.id === what.at);
+    if (!a || !b || !a.alive || !b.alive) return;
+    snapshot();
+    const r = shootRoll(what, a, b, die);
+    showRoll(r.atk.dice, r.hit, a.team, `${a.name} shoots`);
+    showRoll(r.dfn.dice, b.save, b.team, `${b.name} saves${r.dfn.cover ? " (+cover)" : ""}`);
+    b.wounds = Math.max(0, b.wounds - r.dmg);
+    a.ap -= 1; a.used.push("shoot");
+    let line = `<b>${a.name}</b> shoots <b>${b.name}</b> with ${r.w.name} — ` +
+      `<span class="dice">atk [${fmtDice(r.atk.dice)}] def [${fmtDice(r.dfn.dice)}${r.dfn.cover?" +cover":""}]</span> → ` +
+      `<b>${r.dmg} dmg</b>${r.notes.length ? " <span class='dice'>("+r.notes.join("; ")+")</span>" : ""}`;
+    if (b.wounds === 0) { b.alive = false; line += " — <b>incapacitated!</b>"; }
+    else if (isInjured(b)) line += " — injured";
+    logLine(line + fairNote(n), r.dmg > 0);
+    rolled(n, done);
+  });
+  if (why) hint(`Can't shoot yet: ${why}.`);
+}
+// a roll's result is in: send it (online), and online a shared roll can't be undone
+function rolled(n, done) {
+  done();
+  if (n != null) undoStack.length = 0;
   cancelMode(); renderAll();
 }
 function doFight() {
   if (!state.sel || !state.target) return;
   const gap = opGap(state.sel, state.target);
   if (gap > CTRL) { logLine(`Target is not within control range (${fmtIn(CTRL)}&Prime;).`); return; }
-  const wa = WPN[state.sel.weapon].type === "M" ? WPN[state.sel.weapon] : WPN[state.sel.weapons.find(k => WPN[k].type==="M")] || WPN.knife;
-  const wb = WPN[state.target.weapons.find(k => WPN[k].type==="M")] || WPN.knife;
-  snapshot();
-  const ra = rollAttack(wa.atk, effHit(state.sel, wa), wa.rules);
-  const rb = rollAttack(wb.atk, effHit(state.target, wb), wb.rules);
-  showRoll(ra.dice, effHit(state.sel, wa), state.sel.team, `${state.sel.name} fights`);
-  showRoll(rb.dice, effHit(state.target, wb), state.target.team, `${state.target.name} fights back`);
-  // alternate resolution, both always strike (crits first), attacker starts
-  let pools = [ {op:state.sel, foe:state.target, w:wa, crit:ra.crit, norm:ra.norm},
-                {op:state.target, foe:state.sel, w:wb, crit:rb.crit, norm:rb.norm} ];
-  let i = 0, guard = 0;
-  while ((pools[0].crit+pools[0].norm > 0 || pools[1].crit+pools[1].norm > 0) && guard++ < 30) {
-    const p = pools[i % 2];
-    if (p.crit + p.norm > 0 && p.op.alive) {
-      let dmg;
-      if (p.crit > 0) { p.crit--; dmg = p.w.dmgC; } else { p.norm--; dmg = p.w.dmgN; }
-      p.foe.wounds = Math.max(0, p.foe.wounds - dmg);
-      if (p.foe.wounds === 0) { p.foe.alive = false; break; }
-    }
-    i++;
-  }
-  state.sel.ap -= 1; state.sel.used.push("fight");
-  let line = `<b>${state.sel.name}</b> fights <b>${state.target.name}</b> — ` +
-    `<span class="dice">${state.sel.name} [${fmtDice(ra.dice)}] vs ${state.target.name} [${fmtDice(rb.dice)}]</span> → ` +
-    `${state.sel.name} ${state.sel.wounds}W, ${state.target.name} ${state.target.wounds}W`;
-  if (!state.target.alive) line += ` — <b>${state.target.name} down!</b>`;
-  if (!state.sel.alive) line += ` — <b>${state.sel.name} down!</b>`;
-  logLine(line, true);
-  cancelMode(); renderAll();
+  const what = {k: "fight", by: state.sel.id, at: state.target.id, wa: meleeKey(state.sel),
+                wb: state.target.weapons.find(k => WPN[k].type === "M") || "knife"};
+  const why = rollFor(what, (die, done, n) => {
+    const a = OPS.find(o => o.id === what.by), b = OPS.find(o => o.id === what.at);
+    if (!a || !b || !a.alive || !b.alive) return;
+    snapshot();
+    const r = fightRoll(what, a, b, die);
+    showRoll(r.ra.dice, r.hitA, a.team, `${a.name} fights`);
+    showRoll(r.rb.dice, r.hitB, b.team, `${b.name} fights back`);
+    Object.assign(a, r.a); Object.assign(b, r.b);
+    a.ap -= 1; a.used.push("fight");
+    let line = `<b>${a.name}</b> fights <b>${b.name}</b> — ` +
+      `<span class="dice">${a.name} [${fmtDice(r.ra.dice)}] vs ${b.name} [${fmtDice(r.rb.dice)}]</span> → ` +
+      `${a.name} ${a.wounds}W, ${b.name} ${b.wounds}W`;
+    if (!b.alive) line += ` — <b>${b.name} down!</b>`;
+    if (!a.alive) line += ` — <b>${a.name} down!</b>`;
+    logLine(line + fairNote(n), true);
+    rolled(n, done);
+  });
+  if (why) hint(`Can't fight yet: ${why}.`);
 }
 // The ruleset's move actions as buttons: ① main move, ② secondary move, and its charge.
 function moveButtons(repoUsed, dashUsed, chargeUsed) {
