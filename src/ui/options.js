@@ -5,16 +5,21 @@
  */
 const KEY = "skirmishtable.options";
 // panSpeed: WASD camera pan, × the base speed; cardLayout: the status cards on the table
-// edges, as "chips" (a tab per card) or a "drawer" (one tab per side)
-export const options = {panSpeed: 1, cardLayout: "chips"};
-try { Object.assign(options, JSON.parse(localStorage.getItem(KEY)) || {}); } catch (e) {}
+// edges, as "chips" (a tab per card) or a "drawer" (one tab per side); idle: the miniatures
+// breathe and shift their weight on the 3D table (off by default if the system asks for less motion)
+const calm = typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
+export const options = {panSpeed: 1, cardLayout: "chips", idle: calm ? "off" : "on"};
+// only what the player set is stored, so a default (idle under reduced motion) stays a default
+let stored = {};
+try { stored = JSON.parse(localStorage.getItem(KEY)) || {}; Object.assign(options, stored); } catch (e) {}
 if (!(options.panSpeed >= 0.25 && options.panSpeed <= 3)) options.panSpeed = 1;   // a hand-edited or corrupt value must not NaN the camera
 if (!["chips", "drawer"].includes(options.cardLayout)) options.cardLayout = "chips";
+if (!["on", "off"].includes(options.idle)) options.idle = calm ? "off" : "on";
 const hooks = [];
 export const onOptionChange = fn => hooks.push(fn);
 function setOption(k, v) {
-  options[k] = v;
-  try { localStorage.setItem(KEY, JSON.stringify(options)); } catch (e) { /* private window: just don't remember */ }
+  options[k] = v; stored[k] = v;
+  try { localStorage.setItem(KEY, JSON.stringify(stored)); } catch (e) { /* private window: just don't remember */ }
   for (const fn of hooks) fn(k);
 }
 
@@ -23,6 +28,8 @@ const OPTION_ROWS = [
    min: 0.25, max: 3, step: 0.25, fmt: v => `${v}×`},
   {key: "cardLayout", label: "Status cards", help: "Chips: a small tab per card on the table edge; click one to read it. Drawer: one tab per side opens all its cards.",
    choices: [["chips", "Chips"], ["drawer", "Drawer"]]},
+  {key: "idle", label: "Idle animation", help: "Miniatures on the 3D table breathe and shift their weight a little while they stand.",
+   choices: [["on", "On"], ["off", "Off"]]},
 ];
 
 export function wireOptions() {

@@ -379,6 +379,15 @@ as Unity bundles, and photo textures are decoded off the main thread (`createIma
 except Safari); on touch devices they're capped at 2048² (a 4096² texture with mipmaps is
 ~90 MB of GPU memory).
 
+**Idle motion.** With miniatures on the table (and the Idle animation option on, the default
+unless the system asks for reduced motion), they breathe and shift their weight. The scans have
+no skeleton, so `view3d/idle.js` gives each vertex (all but the base's) three displacement fields
+when the model loads: a breath (the chest band swells outward, shoulders and head rise) and a
+forward and a sideways lean round a pivot just above the feet, all weighted by height so the
+feet stay planted. The vertex shader (`onBeforeCompile` on each operative's own copy of the
+materials) plays them on out-of-step waves with a phase per operative. A loop draws at most
+~30 frames a second while it's on, without redrawing the shadow map (which keeps the rest pose).
+
 ## Performance (laptop, Chromium)
 
 | step | time |
