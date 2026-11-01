@@ -139,8 +139,6 @@ button.restricted { opacity: .5; }
   .engpulse { animation: engpulse 0.9s ease-in-out infinite; }
   @keyframes engpulse { 0%, 100% { opacity: .55; } 50% { opacity: 1; } }
 }
-footer { padding: 8px 16px 14px; color: #6e675c; font-size: 11px; }
-footer a { color: #b0764f; }
 @media (max-width: 760px) { aside { flex-basis: 100%; } }
 /* Miniatures panel: team per side, then a model per operative */
 .minirow { display: flex; align-items: center; gap: 8px; margin: 6px 0; }

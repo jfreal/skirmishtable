@@ -29,6 +29,8 @@ else if (TTS_TEAMS.length > 1 && !(typeof navigator !== "undefined" && navigator
   const a = Math.floor(Math.random() * TTS_TEAMS.length);
   const b = (a + 1 + Math.floor(Math.random() * (TTS_TEAMS.length - 1))) % TTS_TEAMS.length;
   minis.sides = [{ team: TTS_TEAMS[a].id, picks: {} }, { team: TTS_TEAMS[b].id, picks: {} }];
+  // keep the draw, or every reload would deal two new teams (and re-measure the bases) until a team is picked by hand
+  try { localStorage.setItem(PREF, JSON.stringify(minis)); } catch (e) {}
 }
 const listeners = [];
 export const onMinisChange = fn => listeners.push(fn);
