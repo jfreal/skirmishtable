@@ -17,17 +17,28 @@ import { mayNote, mayNoteSetUp, opsState, setNoteEdit, setNotes } from './ops.js
 const LEN = { h: 30, m: 24, s: 90 }, MAX = 12;   // the same caps the host applies (protocol.js)
 const open = [new Set(), new Set()];   // chips open in this browser
 const drawer = [false, false];
-// { s, i, was } — was: the card as it stood when editing began (null for a new card, which
-// goes one past the end). The other player may add or remove cards meanwhile.
+// { s, i, was, rank, twins } — was: the card as it stood when editing began (null for a new card,
+// which goes one past the end); twins: how many cards then read the same, rank: which of them
+// this is. The other player may add or remove cards meanwhile.
 let editing = null;
 const sameCard = (a, b) => a.h === b.h && a.m === b.m && a.s === b.s;
-// follow the card being edited to wherever it now sits; drop the edit if it's gone or changed
+const twinsOf = (notes, card) => notes.flatMap((n, j) => sameCard(n, card) ? [j] : []);
+function startEdit(s, i) {
+  const was = { ...opsState.notes[s][i] }, twins = twinsOf(opsState.notes[s], was);
+  editing = { s, i, was, rank: twins.indexOf(i), twins: twins.length };
+}
+// follow the card being edited to wherever it now sits (cards only get added, removed or changed,
+// never reordered); drop the edit if it's gone, changed, or one of its twins went and we can't
+// tell which
 function locate() {
   if (!editing) return;
   const notes = opsState.notes[editing.s];
-  const here = editing.was && notes[editing.i] && sameCard(notes[editing.i], editing.was);   // twins: keep the one in place
-  editing.i = !editing.was ? notes.length : here ? editing.i : notes.findIndex(n => sameCard(n, editing.was));
-  if (editing.i < 0 || !editing.was && notes.length >= MAX || !mayNote(editing.s)) editing = null;
+  if (!editing.was) editing.i = notes.length < MAX ? notes.length : -1;
+  else {
+    const twins = twinsOf(notes, editing.was);
+    editing.i = twins.length === editing.twins ? twins[editing.rank] : -1;
+  }
+  if (editing.i < 0 || !mayNote(editing.s)) editing = null;
 }
 const esc = t => String(t).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 const LOCK = '<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="7" width="10" height="7" rx="1.5"/><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2"/></svg>';
@@ -107,7 +118,7 @@ export function wireStatusCards() {
       if (act === "open") open[s].add(i);
       else if (act === "close") open[s].delete(i);
       else if (act === "drawer") drawer[s] = !drawer[s];
-      else if (act === "edit" && mayNote(s) && opsState.notes[s][i]) editing = { s, i, was: { ...opsState.notes[s][i] } };
+      else if (act === "edit" && mayNote(s) && opsState.notes[s][i]) startEdit(s, i);
       else if (act === "add" && mayNote(s) && opsState.notes[s].length < MAX) { editing = { s, i: opsState.notes[s].length, was: null }; drawer[s] = true; }
       else if (act === "cancel") editing = null;
       else if (act === "del" && mayNote(s)) { locate(); if (editing && editing.was) { remove(s, editing.i); return; } }
