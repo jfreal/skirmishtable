@@ -193,6 +193,24 @@ test('right-click menu on the 2D token and the top bar: mark expended, undo an a
   await expect(page.locator('.opmenu button', { hasText: 'Mark expended' })).toBeDisabled();
   await page.locator('.opmenu button', { hasText: 'Undo activation' }).click();
   expect(await a2(page)).toEqual([10.71, 7.48, true, true, 0]);
+  // a change of order alone can be undone, and Undo puts the order from before back
+  // (the side panel's button scrolls the page: measure the board afresh each time)
+  const clickAt = async (x, y, button = 'left') => { const p = await toScreen(page, x, y); await page.mouse.click(p.x, p.y, { button }); };
+  const order = () => kz(page, () => skirmishtable.world.OPS.find(o => o.id === 'A2').order);
+  const was = await order();
+  await clickAt(10.71, 7.48);   // select it
+  await page.locator('#ordbtn').click();
+  expect(await order()).not.toBe(was);
+  await drag(page, [10.71, 7.48], [12.05, 4.25]);   // a snapshot after the flip keeps the order from before
+  await clickAt(12.05, 4.25, 'right');
+  await page.locator('.opmenu button', { hasText: 'Undo activation' }).click();
+  expect(await a2(page)).toEqual([10.71, 7.48, true, true, 0]);
+  expect(await order()).toBe(was);
+  await page.locator('#ordbtn').click();
+  await clickAt(10.71, 7.48, 'right');
+  await expect(page.locator('.opmenu button', { hasText: 'Undo activation' })).toBeEnabled();
+  await page.locator('.opmenu button', { hasText: 'Undo activation' }).click();
+  expect(await order()).toBe(was);
   // Escape closes it
   await page.locator('.hsq[data-oid="A2"]').click({ button: 'right' });
   await expect(page.locator('.opmenu')).toBeVisible();
