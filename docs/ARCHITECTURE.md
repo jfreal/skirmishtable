@@ -18,7 +18,11 @@ main.js ──► ui/*, view3d/table3d ──► engine/* ──► rules/*, dat
   one module, and everyone else reads the live binding. UI state that several UI modules
   reassign (selection, target, drag, mode) lives in the `state` object in `src/state.js`.
 - `net/*` is online play (see `docs/MULTIPLAYER.md`): `renderAll()` ends with `pump()`, which
-  sends the whole game when it changed; `protocol.js` is pure and unit-tested.
+  sends the whole game when it changed (once per action, at the end of it); `protocol.js` is
+  pure and unit-tested. Dice come from `rollFor()` in `net/roll.js`: `Math.random` offline, a
+  shared commit-reveal roll online (`fairdice.js`, pure and unit-tested). Shoot and Fight
+  work their result out from the dice in `engine/dice.js` (`shootRoll`, `fightRoll`), so the
+  other browser can check it.
   Share links (`link.js` pure, `share.js` the button) pack the same game into `#game=…`.
   Replays (`replay.js` pure, `replayer.js` the recorder and viewer) record that game after
   every change and pack the steps into `#replay=…`.

@@ -27,9 +27,9 @@ export function pickSeat(peers, hostSeat, want) {
   return null;
 }
 
-// Why the host refuses a player's update (null = fine). Players trust each other with
-// dice and wounds; the check stops a browser moving the other side's operatives,
-// changing the map or rules, or a watcher changing anything.
+// Why the host refuses a player's update (null = fine). The check stops a browser moving
+// the other side's operatives, changing the map or rules, or a watcher changing anything.
+// Dice, and the wounds they do, are checked against the shared rolls (fairdice.js).
 const FIXED_FOR_FOES = ["x", "y", "order", "weapon"];
 export function updateProblem(prev, next, seat) {
   if (seat !== 0 && seat !== 1) return "watchers can't change the game";
@@ -46,7 +46,7 @@ export function updateProblem(prev, next, seat) {
   if (!Array.isArray(ms) || JSON.stringify(ms[other]) !== JSON.stringify(prev.minis[other]))
     return "the other side's miniatures belong to the other player";
   // the mission: the host sets the season and Crit Op; each player their own Tac Op,
-  // Primary and score; markers and dice are anyone's (players trust each other there)
+  // Primary and score; markers are anyone's (players trust each other there)
   const a = prev.mission, b = next.mission;
   if (a && b) {
     if (b.set !== a.set || b.crit !== a.crit) return "only the host sets the season and Crit Op";
