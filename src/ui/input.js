@@ -16,6 +16,7 @@ import { hint, logLine, svg } from './dom.js';
 import { cancelMode, defaultMoveType, refreshSight, snapshot, toggleOrder } from './panels.js';
 import { mayControl } from '../net/sync.js';
 import { cancelMarker, placeMarkerAt } from './ops.js';
+import { openOpMenu } from './opmenu.js';
 
 function svgPoint(ev) {
   const pt = new DOMPoint(ev.clientX, ev.clientY);
@@ -204,6 +205,13 @@ export function clickOp(oid) {
   renderAll();
 }
 
+// Open an operative's right-click menu. A long press arms a drag first: drop it.
+export function opMenuAt(op, ev) {
+  if (!op) return;
+  if (state.drag && !state.drag.active) state.drag = null;
+  openOpMenu(op, ev.clientX, ev.clientY);
+}
+
 // Wiring: event listeners and button handlers (called once from main.js).
 export function wireInput() {
   svg.addEventListener("pointermove", ev => {
@@ -267,6 +275,13 @@ export function wireInput() {
     }
     const oid = ev.target.closest && ev.target.closest("[data-oid]") ? ev.target.closest("[data-oid]").getAttribute("data-oid") : null;
     if (oid) clickOp(oid);
+  });
+  // right-click (or long-press) a token: its menu (opmenu.js)
+  svg.addEventListener("contextmenu", ev => {
+    const gEl = ev.target.closest && ev.target.closest("[data-oid]");
+    if (!gEl) return;
+    ev.preventDefault();
+    opMenuAt(OPS.find(o => o.id === gEl.getAttribute("data-oid")), ev);
   });
   document.addEventListener("keydown", ev => {
     if (ev.key === "Escape") { cancelMarker(); cancelMode(); renderAll(); }

@@ -16,7 +16,8 @@ import { engagements } from '../engine/engage.js';
 import { opsState, placeMarkerAt } from '../ui/ops.js';
 import { TTS_OPS } from '../data/tts-ops.js';
 import { hint } from '../ui/dom.js';
-import { armDrag, setBoardPicker } from '../ui/input.js';
+import { armDrag, opMenuAt, setBoardPicker } from '../ui/input.js';
+import { closeOpMenu } from '../ui/opmenu.js';
 import { SHOT_KINDS, shotsFrom } from '../engine/shots.js';
 import { coneShadows, sightCone, visibilityPolygon } from '../engine/sight.js';
 import { opR } from '../engine/geometry.js';
@@ -593,6 +594,21 @@ function init3D() {
   for (const type of ["touchstart", "touchmove"]) box.addEventListener(type, ev => {
     if (state.drag && state.drag.from3d) { ev.stopPropagation(); if (ev.cancelable) ev.preventDefault(); }
   }, {capture: true, passive: false});
+  // right-click a model for its menu, unless the right button was dragging to pan
+  // The contextmenu event can fire right at button-down (Mac, Linux), before any drag, so
+  // movement is tracked until release: a drag past 5px closes a menu already opened. The state
+  // lasts until the next press, so it holds whichever order contextmenu and the drag come in.
+  let rdown = null;
+  box.addEventListener("pointerdown", ev => { rdown = ev.button === 2 ? {x: ev.clientX, y: ev.clientY, panned: false} : null; }, true);
+  window.addEventListener("pointermove", ev => {
+    if (!rdown || rdown.panned || !(ev.buttons & 2)) return;
+    if (Math.hypot(ev.clientX - rdown.x, ev.clientY - rdown.y) > 5) { rdown.panned = true; closeOpMenu(); }
+  });
+  box.addEventListener("contextmenu", ev => {
+    const panned = rdown && rdown.panned;
+    const op = panned ? null : tokenAt(ev);
+    if (op) { ev.preventDefault(); opMenuAt(op, ev); }
+  });
   window.addEventListener("pointerup", () => { controls.enabled = true; });
   window.addEventListener("pointercancel", () => { controls.enabled = true; });
   box.addEventListener("pointermove", ev => {
