@@ -309,10 +309,25 @@ export function clearance(open, w, h, i0, j0) {
   }
   return out;
 }
+// A scanned cell blocks if the model touches it anywhere, so its traced edge sits on
+// average half a cell outside the real wall: bases measure to the middle of it instead,
+// and press flush against the model rather than stopping ~0.05" short.
+export const SCAN_SLACK = GRES / 2;
 export function buildClearance() {
-  const {n, cls} = G, open = new Uint8Array(n);
-  for (let k = 0; k < n; k++) open[k] = cls[k] >= 1 && cls[k] <= 3 ? 0 : 1;
-  G.clear.set(clearance(open, G.nx, G.ny, 0, 0));
+  const {n, cls, src} = G, open = new Uint8Array(n), scan = new Uint8Array(n);
+  let scanned = false;
+  for (let k = 0; k < n; k++) {
+    const b = cls[k] >= 1 && cls[k] <= 3;
+    open[k] = b && !src[k] ? 0 : 1;
+    scan[k] = b && src[k] ? 0 : 1;
+    if (b && src[k]) scanned = true;
+  }
+  const c = clearance(open, G.nx, G.ny, 0, 0);
+  if (scanned) {
+    const cs = clearance(scan, G.nx, G.ny, 0, 0);       // already capped by the board edges
+    for (let k = 0; k < n; k++) c[k] = Math.min(c[k], cs[k] + SCAN_SLACK);
+  }
+  G.clear.set(c);
   for (let k = 0; k < n; k++) G.free[k] = G.clear[k] >= BASE_R - FREE_EPS ? 1 : 0;
   NAV_R = BASE_R; ZONES = null; LAYER = 0; LEVELS = [];
 }

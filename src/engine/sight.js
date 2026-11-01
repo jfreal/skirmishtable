@@ -3,9 +3,14 @@
  */
 import { CTRL } from '../config.js';
 import { dist, opGap, opR, perimeterPts } from './geometry.js';
-import { C_HEAVY, C_LIGHT, C_WALL, FEATS, G, GRES, gridWalk } from './grid.js';
+import { C_HEAVY, C_LIGHT, C_WALL, FEATS, G, GRES, gridWalk, SCAN_SLACK } from './grid.js';
 import { BH, BW } from './world.js';
 import { RULES } from '../rules/index.js';
+
+// Sight samples sit this far inside a base's edge. A base may press SCAN_SLACK into a
+// scanned wall's traced cells, so the samples stay clear of them: a wall the base only
+// touches neither blocks a line to it nor gives it cover.
+const INSET = 0.02 + SCAN_SLACK;
 
 export const sightStop = k => { const c = G.cls[k]; return c === C_WALL || c === C_HEAVY; };
 // gridWalk with sightStop, unrolled: proving a target hidden checks hundreds of lines
@@ -42,7 +47,7 @@ export function lineBlocked(x1, y1, x2, y2) {
 // whole building.
 export function sightAnalysis(a, b) {
   const rA = opR(a), rB = opR(b);
-  const aPts = perimeterPts(a, 16, rA - 0.02), bPts = perimeterPts(b, 24, rB - 0.02);
+  const aPts = perimeterPts(a, 16, rA - INSET), bPts = perimeterPts(b, 24, rB - INSET);
   const gap = opGap(a, b), half = GRES / 2, nx = G.nx;
   const { cover } = RULES, far = gap > cover.voidWithin, obscure = far && RULES.obscure;
   // Visible: any one unblocked line (each walk stops at the first wall). Not visible
@@ -161,7 +166,7 @@ function seeFrom(aPts, bPts) {
 }
 // Just the visibility test of sightAnalysis: can a see any part of b's base?
 export function canSee(a, b) {
-  return seeFrom(perimeterPts(a, 16, opR(a) - 0.02), perimeterPts(b, 24, opR(b) - 0.02)) >= 0;
+  return seeFrom(perimeterPts(a, 16, opR(a) - INSET), perimeterPts(b, 24, opR(b) - INSET)) >= 0;
 }
 export function inControlRange(a, b) {
   if (opGap(a,b) > CTRL) return false;
