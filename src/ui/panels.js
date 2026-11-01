@@ -4,7 +4,8 @@
 import { state } from '../state.js';
 import { CTRL, TEAMCOL_LT, WPN } from '../config.js';
 import { effHit, isInjured, rollAttack, rollDefence } from '../engine/dice.js';
-import { opGap } from '../engine/geometry.js';
+import { opGap, opR } from '../engine/geometry.js';
+import { nearestFree, opLayer, useBase } from '../engine/movement.js';
 import { SHOT_KINDS, cannotShoot, judgeShot, shotsFrom } from '../engine/shots.js';
 import { OPS } from '../engine/world.js';
 import { SHOT_COL, renderAll } from './board.js';
@@ -321,6 +322,31 @@ export function undoActivation(op) {
   op.ready = true; op.ap = op.apl; op.used = [];
   if (state.sel === op) state.moveType = "reposition";
   logLine(`<b>${op.name}</b> activation undone${here ? " — back where it started" : ""}, ready again.`);
+  cancelMode(); refreshSight(); renderAll();
+}
+// Take an operative off the table as incapacitated (down = true), or put it back (with at
+// least 1 wound) if that was a mistake: where it was, or the nearest spot within 3" where its
+// base fits (someone may have moved in meanwhile); if there's none it stays down.
+export function setIncapacitated(op, down) {
+  if (!op || op.alive !== down || !mayControl(op)) return;
+  let spot = null;
+  if (!down) {
+    useBase(opR(op));
+    spot = nearestFree(op.x, op.y, op.id, opLayer(op), 3);
+    if (!spot) { logLine(`No room to put <b>${op.name}</b> back where it was — clear the spot first.`); return; }
+  }
+  snapshot();
+  op.alive = !down;
+  if (down) {
+    if (state.sel === op) state.sel = null;
+    if (state.target === op) state.target = null;
+    logLine(`<b>${op.name}</b> is incapacitated — off the table.`, true);
+  } else {
+    const moved = Math.hypot(spot[0] - op.x, spot[1] - op.y) > 1e-6;
+    op.x = spot[0]; op.y = spot[1];
+    op.wounds = Math.max(1, op.wounds);
+    logLine(`<b>${op.name}</b> is back on the table (${op.wounds}W)${moved ? ", moved aside: its spot was taken" : ""}.`);
+  }
   cancelMode(); refreshSight(); renderAll();
 }
 export function cancelMode() { state.mode = null; state.drag = null; state.rulerPts = []; hint(HINT0); }

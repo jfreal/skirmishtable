@@ -387,3 +387,4 @@ table.hscore tfoot td { font-size: 14px; padding-top: 3px; }
 .opmenu .omh span { font-family: inherit; font-weight: 600; font-size: 11px; color: #9a9184; align-self: center; }
 .opmenu button { text-align: left; border-color: transparent; background: transparent; padding: 5px 8px; }
 .opmenu button:hover:not(:disabled), .opmenu button:focus-visible { background: #2a2520; border-color: #e0672f; }
+.opmenu button.omdead { color: #e0302a; border-top: 1px solid #2a2520; border-radius: 0 0 6px 6px; margin-top: 2px; }
