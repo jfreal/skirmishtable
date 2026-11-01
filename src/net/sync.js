@@ -202,7 +202,7 @@ function hostMessage(m, from) {
     const seat = pickSeat(net.peers, net.seat, m.want);
     net.peers[from] = seat;
     send({ t: "welcome", seat, v: net.v, game: outGame(), log: recentLog() }, from);
-    if (seat === 1 - net.seat) fair.pair(from, net.seat);   // the other player: roll together from now on
+    if ((net.seat === 0 || net.seat === 1) && seat === 1 - net.seat) fair.pair(from, net.seat);   // the other player: roll together from now on
     note(`<b>Online:</b> a player joined — ${seat === null ? "watching" : "playing " + SIDE[seat]}.`);
     sendRoster();
   } else if (m.t === "fair") {
