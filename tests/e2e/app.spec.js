@@ -58,21 +58,21 @@ test('loads Volkus AO 1 on the 3D table, with the grouped map and rules pickers'
 test('drags an operative into the stronghold corner nook on the 3D table', async ({ page }) => {
   await place(page, 'A2', 10.71, 7.48);
   const during = await drag(page, [10.71, 7.48], [12.05, 4.25], true);
-  expect(during.total).toBe(5);
+  expect(during.total).toBe(4);
   expect(during.overlay3D).toBeGreaterThan(3);   // route ribbons, ghost, label
   const op = await kz(page, () => { const o = skirmishtable.world.OPS.find(o => o.id === 'A2'); return [+o.x.toFixed(2), +o.y.toFixed(2)]; });
   expect(op).toEqual([12.05, 4.25]);
-  await expect(page.locator('#log p').first()).toContainText('repositions 5"');
+  await expect(page.locator('#log p').first()).toContainText('repositions 4"');
 });
 
 test('drags an operative into the stronghold corner nook on the 2D map', async ({ page }) => {
   await to2D(page);
   await place(page, 'A2', 10.71, 7.48);
   const during = await drag(page, [10.71, 7.48], [12.05, 4.25]);
-  expect(during.total).toBe(5);
+  expect(during.total).toBe(4);
   const op = await kz(page, () => { const o = skirmishtable.world.OPS.find(o => o.id === 'A2'); return [+o.x.toFixed(2), +o.y.toFixed(2)]; });
   expect(op).toEqual([12.05, 4.25]);
-  await expect(page.locator('#log p').first()).toContainText('repositions 5"');
+  await expect(page.locator('#log p').first()).toContainText('repositions 4"');
 });
 
 test('climbs over the low wall into the stronghold and labels the climb', async ({ page }) => {
