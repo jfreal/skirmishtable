@@ -58,6 +58,15 @@ describe("Shoot and Fight from given dice", () => {
 });
 
 describe("checking an update against the rolls", () => {
+  it("lets a player change only its own side's wounds without a roll", () => {
+    const g = game();
+    const hitFoe = wire(g), hitOwn = wire(g);
+    hitFoe.ops.find(o => o.id === "B1").wounds -= 1;      // A harms Slate's operative by hand
+    hitOwn.ops.find(o => o.id === "A1").wounds -= 1;      // A harms its own
+    expect(rollProblem(g, hitFoe, [], 0)).toMatch(/wounds changed without a shared roll/);
+    expect(rollProblem(g, hitOwn, [], 0)).toBe(null);
+  });
+
   const shot = { k: "shoot", by: "A1", at: "B1", w: "srgFire", acc: 0, obsc: false, cover: false };
   it("passes the result of the roll and nothing else", () => {
     const g = game(), recs = [{ s: 0, what: shot, seed: "s1" }];
@@ -149,7 +158,32 @@ describe("the shared roll between two browsers", () => {
     A.take();
     A.roll({ k: "tray", side: 0, idx: [], add: 3 }, (die, done) => done());
     run();
-    expect(warnings.B).toEqual(["Ash's roll #1 was never used"]);
+    expect(warnings.B).toEqual(["Ash's roll #1 was never used (1 unused so far)"]);
+  });
+
+  it("lets the roller cancel a roll it cannot use, and says so", () => {
+    const { A, run, warnings } = pairUp();
+    let cancel;
+    A.roll({ k: "tray", side: 0, idx: [], add: 1 }, (die, done, n, c) => { cancel = c; });
+    run();
+    cancel();
+    run();
+    expect(warnings.B).toEqual(["Ash dropped roll #1 unused (1 dropped so far)"]);
+    expect(A.roll({ k: "tray", side: 0, idx: [], add: 1 }, () => {})).toBe(null);   // not blocked for 8s
+  });
+
+  it("refuses a roll that is not the sender's own, and a huge or malformed roll", () => {
+    const { A, B, run, warnings } = pairUp();
+    A.roll({ k: "tray", side: 0, idx: [], add: 1 }, (die, done) => done());
+    run();
+    const [tag] = A.take();
+    const prev = game(), next = wire(prev);
+    // A replays a roll B took part in as if it were B's own: B checks the roll was A's
+    expect(A.verify(prev, next, [tag])).toMatch(/isn't the sender's own/);
+    const big = pairUp();
+    big.A.roll({ k: "tray", side: 0, idx: [], add: 1, junk: "x".repeat(2000) }, () => {});
+    big.run();
+    expect(big.warnings.B[0]).toMatch(/too big/);
   });
 
   it("refuses to answer a roller that changes its secret after promising it", () => {

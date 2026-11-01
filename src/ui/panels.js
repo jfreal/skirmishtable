@@ -63,9 +63,14 @@ function doShoot() {
   // what is rolled for: the shot as this table judges it, fixed before the dice are known
   const what = {k: "shoot", by: state.sel.id, at: state.target.id, w: state.sel.weapon,
                 acc: Math.min(shot.accurate, w.atk), obsc: !!shot.obscured, cover: !!shot.save};
-  const why = rollFor(what, (die, done, n) => {
+  const why = rollFor(what, (die, done, n, cancel) => {
+    // the dice arrive a moment after the click: judge again what they are for
     const a = OPS.find(o => o.id === what.by), b = OPS.find(o => o.id === what.at);
-    if (!a || !b || !a.alive || !b.alive) return;
+    if (!a || !b || !a.alive || !b.alive || a.ap < 1 || a.weapon !== what.w) {
+      cancel();
+      logLine(`<b>${a ? a.name : what.by}</b>'s shot no longer stands — not rolled.`);
+      renderAll(); return;
+    }
     snapshot();
     const r = shootRoll(what, a, b, die);
     showRoll(r.atk.dice, r.hit, a.team, `${a.name} shoots`);
@@ -94,9 +99,13 @@ function doFight() {
   if (gap > CTRL) { logLine(`Target is not within control range (${fmtIn(CTRL)}&Prime;).`); return; }
   const what = {k: "fight", by: state.sel.id, at: state.target.id, wa: meleeKey(state.sel),
                 wb: state.target.weapons.find(k => WPN[k].type === "M") || "knife"};
-  const why = rollFor(what, (die, done, n) => {
+  const why = rollFor(what, (die, done, n, cancel) => {
     const a = OPS.find(o => o.id === what.by), b = OPS.find(o => o.id === what.at);
-    if (!a || !b || !a.alive || !b.alive) return;
+    if (!a || !b || !a.alive || !b.alive || a.ap < 1 || opGap(a, b) > CTRL) {
+      cancel();
+      logLine(`<b>${a ? a.name : what.by}</b>'s fight no longer stands — not rolled.`);
+      renderAll(); return;
+    }
     snapshot();
     const r = fightRoll(what, a, b, die);
     showRoll(r.ra.dice, r.hitA, a.team, `${a.name} fights`);

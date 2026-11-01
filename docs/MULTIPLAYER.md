@@ -41,16 +41,21 @@ The checks:
 - The roller puts the result in the game as before and the update says which rolls it holds.
   The other browser works those rolls out from the dice itself (`rollProblem`): both dice
   trays, and the wounds a Shoot or Fight changed.
-- Without a roll, dice in a tray can only be cleared, not changed.
+- Without a roll, dice in a tray can only be cleared, not changed, and a player can't
+  change the wounds of the other side's operatives (its own, by hand, it can). A roll is
+  only taken from the player whose roll it was, so one can't replay the other's rolls.
+- Messages are size-checked and only the last 64 rolls are kept.
 - The host refuses a guest's update that doesn't add up (the guest's table snaps back, as
   for a move it isn't allowed). The host is the referee, so a guest can't refuse; it puts a
   ⚠ line in its log instead.
 - A roll that is never used (rolled, didn't like it, rolled again) gets a ⚠ line on the
-  other side when the next roll comes.
+  other side when the next roll comes, with a running count. A roll the roller says it
+  couldn't use (the target died meanwhile) is a `void` message: it frees the next roll and is
+  logged and counted, not blocked. This detects discarding; it can't prevent it.
 - The other browser also judges the shot itself (cover, obscured, Accurate) and the fight's
   control range, and warns if it sees it differently. It only warns: refusing to answer
   would let a player block the other's rolls.
-- Online, a Shoot or Fight can't be undone (Undo stops at it), or Undo would be a re-roll.
+- Online, a shared roll (Shoot, Fight or the dice box) can't be undone (Undo stops at it), or Undo would be a re-roll.
 
 What it doesn't cover: a browser can still refuse to answer a roll it doesn't like (the
 roller sees no answer after 15 seconds); nothing checks moves; the host still holds the

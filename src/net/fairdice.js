@@ -137,8 +137,10 @@ const same = (a, b) => a.length === b.length && a.every((v, i) => v === b[i]);
 // Is `next` what `prev` becomes after these rolls (recs: [{s, what, seed}], in order)?
 // Checks the dice in both trays and the wounds the rolls changed; with no rolls, dice in
 // a tray may only be cleared. prev.ops must carry the stats (names, weapons, save).
-// Returns what's wrong, or null.
-export function rollProblem(prev, next, recs) {
+// `sender` (0 or 1) is the side the update comes from: it may not change the wounds of the
+// other side's operatives except through a shared roll (its own it may, by hand: ploys,
+// corrections). Returns what's wrong, or null.
+export function rollProblem(prev, next, recs, sender = null) {
   if (!prev || !next || !Array.isArray(prev.ops)) return "no game to check";
   const ops = prev.ops.map(o => ({ ...o }));
   const before = cleanDiceTrays(prev.dice), got = cleanDiceTrays(next.dice);
@@ -160,6 +162,14 @@ export function rollProblem(prev, next, recs) {
     const e = ops.find(o => o.id === id), n = nextOps.find(o => o && o.id === id);
     if (!n || n.wounds !== e.wounds || !!n.alive !== !!e.alive) return `${e.name}'s wounds don't match the shared roll`;
   }
+  if (sender === 0 || sender === 1) {
+    const was = Array.isArray(prev.ops) ? prev.ops : [];
+    for (const o of was) {
+      if (o.team === sender || touched.has(o.id)) continue;
+      const n = nextOps.find(x => x && x.id === o.id);
+      if (!n || n.wounds !== o.wounds || !!n.alive !== !!o.alive) return `${o.name}'s wounds changed without a shared roll`;
+    }
+  }
   return null;
 }
 
@@ -170,14 +180,14 @@ export function rollProblem(prev, next, recs) {
 // can block the other's rolls. Messages are {t: "fair", k: "hi" | "roll" | "rolled", ...}.
 export function createFair({ send, warn = () => {}, check = () => null, timeout = 15000, secret = newSecret } = {}) {
   let peer = null, me = null, them = null;
-  let next, mine, theirs, waiting, inflight, landing, recs, out, checked;
+  let next, mine, theirs, waiting, inflight, landing, recs, out, checked, dropped;
   const fresh = n => { const sec = secret(); return { n, sec, h: sha256(sec) }; };
   function reset() {
     next = [0, 0];                    // the next roll's number, per side
     mine = [fresh(0), fresh(0)];      // my secret for that roll, per side
     theirs = [null, null];            // their commitment for that roll, per side
     waiting = null; inflight = null; landing = 0;
-    recs = new Map(); out = []; checked = 0;
+    recs = new Map(); out = []; checked = 0; dropped = 0;
   }
   reset();
   const key = (s, n) => s + ":" + n;
@@ -232,16 +242,28 @@ export function createFair({ send, warn = () => {}, check = () => null, timeout 
       go();
     } else if (m.k === "roll") answer(m);
     else if (m.k === "rolled") rolled(m);
+    else if (m.k === "void") voided(m);
+  }
+  // the roller says it did not use a roll (the shot or fight no longer stood): nothing
+  // rode on it, but it is counted and shown, since a roll never used is also what a
+  // player who didn't like the dice would leave behind
+  function voided(m) {
+    const r = m && recs.get(key(m.s, m.n));
+    if (!r || m.s !== them || r.seen) return;
+    r.seen = true;
+    dropped++;
+    warn(`${SIDE[r.s]} dropped roll #${r.n + 1} unused (${dropped} dropped so far)`);
   }
   // I'm the responder: check their secret, reveal mine
   function answer(m) {
     const s = m.s, n = m.n, t = theirs[s];
     if (s !== them) return warn("a roll for the wrong side");
     if (n !== next[s] || !t || t.n !== n) return warn(`${SIDE[s]}'s roll #${(n | 0) + 1} came out of order`);
-    if (typeof m.sec !== "string" || sha256(m.sec) !== t.h || !HEX.test(m.h))
+    if (typeof m.sec !== "string" || !HEX.test(m.sec) || !HEX.test(m.h) || sha256(m.sec) !== t.h)
       return warn(`${SIDE[s]}'s secret for roll #${n + 1} isn't the one it promised — not answered`);
+    if (JSON.stringify(m.what === undefined ? null : m.what).length > 600) return warn(`${SIDE[s]}'s roll #${n + 1} was too big — not answered`);
     const before = recs.get(key(s, n - 1));
-    if (before && !before.seen) warn(`${SIDE[s]}'s roll #${n} was never used`);
+    if (before && !before.seen) { before.seen = true; dropped++; warn(`${SIDE[s]}'s roll #${n} was never used (${dropped} unused so far)`); }
     let why = null;
     try { why = check(m.what, s); } catch (e) { why = "it names something this table doesn't have"; }
     if (why) warn(`${SIDE[s]}'s roll #${n + 1}: ${why}`);
@@ -251,14 +273,17 @@ export function createFair({ send, warn = () => {}, check = () => null, timeout 
     theirs[s] = { n: n + 1, h: m.h };
     next[s] = n + 1;
     recs.set(key(s, n), { s, n, what: m.what, seed: seedOf(s, n, m.sec, my.sec), seen: false });
+    prune();
   }
+  // only the latest rolls are kept: a verify for an older one reads "never happened"
+  function prune() { while (recs.size > 64) recs.delete(recs.keys().next().value); }
   // I'm the roller: check their secret, then the dice are known
   function rolled(m) {
     const w = inflight;
     if (!w || m.s !== w.s || m.n !== w.n) return warn("an answer to a roll nobody made");
     inflight = null;
     const t = theirs[w.s];
-    if (typeof m.sec !== "string" || sha256(m.sec) !== t.h || !HEX.test(m.h)) {
+    if (typeof m.sec !== "string" || !HEX.test(m.sec) || !HEX.test(m.h) || sha256(m.sec) !== t.h) {
       warn(`the other player's secret for roll #${w.n + 1} isn't the one it promised`);
       return fail(w, "the other player's browser broke the shared roll");
     }
@@ -266,10 +291,15 @@ export function createFair({ send, warn = () => {}, check = () => null, timeout 
     next[w.s] = w.n + 1;
     const seed = seedOf(w.s, w.n, w.sec, m.sec), rec = { s: w.s, n: w.n, what: w.what, seed, seen: false };
     recs.set(key(w.s, w.n), rec);
+    prune();
     if (waiting !== w) return;        // it timed out: this roll is lost
     clearTimeout(w.timer); waiting = null;
     landing = Date.now();
-    w.onDice(diceFrom(seed), () => { landing = 0; out.push({ s: w.s, n: w.n }); }, w.n + 1);
+    const settle = () => { landing = 0; };
+    // done(): the result is in the game, send it marked. cancel(): the roll can't be used
+    // (what it was for no longer stands): free the next roll and tell the other player.
+    w.onDice(diceFrom(seed), () => { settle(); out.push({ s: w.s, n: w.n }); }, w.n + 1,
+             () => { settle(); rec.seen = true; if (peer) send({ t: "fair", k: "void", s: w.s, n: w.n }, peer); });
   }
 
   // the rolls put into the game since the last update (to send with it)
@@ -281,11 +311,12 @@ export function createFair({ send, warn = () => {}, check = () => null, timeout 
     for (const t of Array.isArray(tags) ? tags.slice(0, 8) : []) {
       const r = t && recs.get(key(t.s, t.n));
       if (!r) return "a roll that never happened";
+      if (r.s !== them) return "a roll that isn't the sender's own";
       if (r.seen) return `${SIDE[r.s]}'s roll #${r.n + 1} used twice`;
       list.push(r);
     }
     for (const r of list) r.seen = true;
-    const why = rollProblem(prev, nextGame, list);
+    const why = rollProblem(prev, nextGame, list, them);
     if (!why) checked += list.length;
     return why;
   }
@@ -294,6 +325,6 @@ export function createFair({ send, warn = () => {}, check = () => null, timeout 
     for (const t of Array.isArray(tags) ? tags : []) { const r = t && recs.get(key(t.s, t.n)); if (r) r.seen = true; }
   }
   const kinds = tags => (Array.isArray(tags) ? tags : []).map(t => (recs.get(key(t && t.s, t && t.n)) || {}).what).filter(Boolean).map(w => w.k);
-  return { pair, unpair, roll, onMessage, take, verify, lose, kinds,
+  return { pair, unpair, roll, onMessage, take, verify, lose, kinds, pending: () => out.length > 0,
            peer: () => peer, paired: () => peer !== null, checked: () => checked };
 }

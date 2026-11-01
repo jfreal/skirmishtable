@@ -150,7 +150,7 @@ function flush() {
   queued = false;
   if (!online() || applying) return;
   const g = exportGame(), s = sig(g);
-  if (s === lastSig) { outbox = []; return; }   // nothing changed: log lines were local feedback
+  if (s === lastSig && !fair.pending()) { outbox = []; return; }   // a roll still to send goes even if it changed nothing   // nothing changed: log lines were local feedback
   if (net.role === "host") {
     net.v++;
     send({ t: "state", v: net.v, game: outGame(g), log: outbox, from: selfId, rolls: fair.take() });
@@ -220,7 +220,7 @@ function hostMessage(m, from) {
     const kinds = fair.kinds(m.rolls);
     snapshot();                             // the host's undo covers everyone's actions
     applyGame(m.game);
-    if (kinds.includes("shoot") || kinds.includes("fight")) undoStack.length = 0;   // a shared roll can't be undone
+    if (kinds.length) undoStack.length = 0;   // a shared roll (shot, fight or dice box) can't be undone
     addLines(m.log);
     net.v++;
     send({ t: "state", v: net.v, game: outGame(), log: m.log, from, rolls: Array.isArray(m.rolls) ? m.rolls : [] });
