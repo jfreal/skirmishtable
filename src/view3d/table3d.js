@@ -16,7 +16,7 @@ import { engagements } from '../engine/engage.js';
 import { opsState, placeMarkerAt } from '../ui/ops.js';
 import { TTS_OPS } from '../data/tts-ops.js';
 import { hint } from '../ui/dom.js';
-import { armDrag, setBoardPicker } from '../ui/input.js';
+import { armDrag, opMenuAt, setBoardPicker } from '../ui/input.js';
 import { SHOT_KINDS, shotsFrom } from '../engine/shots.js';
 import { coneShadows, sightCone, visibilityPolygon } from '../engine/sight.js';
 import { opR } from '../engine/geometry.js';
@@ -593,6 +593,15 @@ function init3D() {
   for (const type of ["touchstart", "touchmove"]) box.addEventListener(type, ev => {
     if (state.drag && state.drag.from3d) { ev.stopPropagation(); if (ev.cancelable) ev.preventDefault(); }
   }, {capture: true, passive: false});
+  // right-click a model for its menu, unless the right button was dragging to pan
+  let rdown = null;
+  box.addEventListener("pointerdown", ev => { if (ev.button === 2) rdown = [ev.clientX, ev.clientY]; }, true);
+  box.addEventListener("contextmenu", ev => {
+    const panned = rdown && Math.hypot(ev.clientX - rdown[0], ev.clientY - rdown[1]) > 5;
+    rdown = null;
+    const op = panned ? null : tokenAt(ev);
+    if (op) { ev.preventDefault(); opMenuAt(op, ev); }
+  });
   window.addEventListener("pointerup", () => { controls.enabled = true; });
   window.addEventListener("pointercancel", () => { controls.enabled = true; });
   box.addEventListener("pointermove", ev => {

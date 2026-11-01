@@ -21,6 +21,7 @@ import { capName, logLine } from './dom.js';
 import { cancelMode, defaultMoveType, snapshot, tray } from './panels.js';
 import { mayScore, opsState, scoreTotal, setScore } from './ops.js';
 import { renderStatusCards } from './statuscards.js';
+import { openOpMenu } from './opmenu.js';
 
 const COLS = ["Crit", "Tac", "Kill"];
 let sheetOpen = false;
@@ -138,6 +139,12 @@ export function flashOp(op) { flashOp2D(op); flashOp3D(op); }
 export function wireHud() {
   const top = document.getElementById("hudtop"), bot = document.getElementById("hudbot"), sh = document.getElementById("hudsheet");
   top.addEventListener("click", ev => { const b = ev.target.closest(".hsq"); if (b) pick(b.dataset.oid); });
+  top.addEventListener("contextmenu", ev => {
+    const b = ev.target.closest(".hsq");
+    if (!b) return;
+    ev.preventDefault(); hideTip();
+    openOpMenu(OPS.find(o => o.id === b.dataset.oid), ev.clientX, ev.clientY);
+  });
   top.addEventListener("pointerover", ev => { const b = ev.target.closest(".hsq"); if (b) showTip(b); });
   top.addEventListener("pointerout", ev => { if (ev.target.closest(".hsq")) hideTip(); });
   top.addEventListener("focusin", ev => { const b = ev.target.closest(".hsq"); if (b) showTip(b); });

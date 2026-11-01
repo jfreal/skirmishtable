@@ -378,3 +378,12 @@ table.hscore tfoot td { font-size: 14px; padding-top: 3px; }
 .replaybar .rplog { max-height: 7.5em; overflow-y: auto; font-size: 12px; }
 .replaybar .rplog p { margin: 2px 0; }
 @media (max-width: 760px) { .replaybar .rptps { margin-left: 0; } }
+
+/* ---------- right-click menu on an operative (src/ui/opmenu.js) ---------- */
+.opmenu { position: fixed; z-index: 50; min-width: 170px; display: flex; flex-direction: column; gap: 2px; padding: 4px;
+  background: #14110e; border: 1px solid #3a332a; border-radius: 8px; box-shadow: 0 6px 18px rgba(0, 0, 0, .5); font-size: 13px; }
+.opmenu .omh { font-family: "Big Shoulders", sans-serif; font-weight: 800; font-size: 15px; text-transform: uppercase; letter-spacing: .03em;
+  padding: 3px 8px 5px; border-bottom: 1px solid #2a2520; margin-bottom: 2px; display: flex; justify-content: space-between; gap: 12px; }
+.opmenu .omh span { font-family: inherit; font-weight: 600; font-size: 11px; color: #9a9184; align-self: center; }
+.opmenu button { text-align: left; border-color: transparent; background: transparent; padding: 5px 8px; }
+.opmenu button:hover:not(:disabled), .opmenu button:focus-visible { background: #2a2520; border-color: #e0672f; }

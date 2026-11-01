@@ -165,6 +165,49 @@ test('a move after another move cannot end within engagement range', async ({ pa
   await expect(page.locator('#hint')).toContainText("can't Charge after moving");
 });
 
+// [x, y, ready, full AP, actions used] of operative A2
+const a2 = page => kz(page, () => { const o = skirmishtable.world.OPS.find(o => o.id === 'A2'); return [+o.x.toFixed(2), +o.y.toFixed(2), o.ready, o.ap === o.apl, o.used.length]; });
+
+test('right-click menu on the 2D token and the top bar: mark expended, undo an activation', async ({ page }) => {
+  await to2D(page);
+  await place(page, 'A2', 10.71, 7.48);
+  await drag(page, [10.71, 7.48], [12.05, 4.25]);
+  expect(await a2(page)).toEqual([12.05, 4.25, true, false, 1]);
+  // Undo activation puts it back where it started, ready with full AP
+  const at = await toScreen(page, 12.05, 4.25);
+  await page.mouse.click(at.x, at.y, { button: 'right' });
+  await expect(page.locator('.opmenu')).toBeVisible();
+  await page.locator('.opmenu button', { hasText: 'Undo activation' }).click();
+  await expect(page.locator('.opmenu')).toHaveCount(0);
+  expect(await a2(page)).toEqual([10.71, 7.48, true, true, 0]);
+  await expect(page.locator('#log p').first()).toContainText('activation undone');
+  // the top bar's circle has the same menu: nothing done yet, so only Mark expended
+  await page.locator('.hsq[data-oid="A2"]').click({ button: 'right' });
+  await expect(page.locator('.opmenu button', { hasText: 'Undo activation' })).toBeDisabled();
+  await page.locator('.opmenu button', { hasText: 'Mark expended' }).click();
+  expect((await a2(page))[2]).toBe(false);
+  await expect(page.locator('.hsq[data-oid="A2"]')).toHaveClass(/spent/);
+  // and back to ready from the token
+  const back = await toScreen(page, 10.71, 7.48);
+  await page.mouse.click(back.x, back.y, { button: 'right' });
+  await expect(page.locator('.opmenu button', { hasText: 'Mark expended' })).toBeDisabled();
+  await page.locator('.opmenu button', { hasText: 'Undo activation' }).click();
+  expect(await a2(page)).toEqual([10.71, 7.48, true, true, 0]);
+  // Escape closes it
+  await page.locator('.hsq[data-oid="A2"]').click({ button: 'right' });
+  await expect(page.locator('.opmenu')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.opmenu')).toHaveCount(0);
+});
+
+test('right-click menu on the 3D model', async ({ page }) => {
+  await place(page, 'A2', 10.71, 7.48);
+  const m = await toScreen3D(page, 10.71, 7.48, 0.7);
+  await page.mouse.click(m.x, m.y, { button: 'right' });
+  await page.locator('.opmenu button', { hasText: 'Mark expended' }).click();
+  expect((await a2(page))[2]).toBe(false);
+});
+
 test('switches maps from the picker and undoes a move', async ({ page }) => {
   await to2D(page);
   await page.locator('.maprow button[title="Volkus \'25 AO 3"]').click();
