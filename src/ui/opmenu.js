@@ -4,6 +4,7 @@
  * activation began (panels.js). On a phone a long press opens it.
  */
 import { TEAMCOL_LT } from '../config.js';
+import { OPS } from '../engine/world.js';
 import { mayControl } from '../net/sync.js';
 import { canUndoActivation, endActivation, undoActivation } from './panels.js';
 
@@ -18,8 +19,8 @@ export function openOpMenu(op, x, y) {
   if (!op) return;
   const mine = mayControl(op);
   const items = [
-    ["expend", "Mark expended", mine && op.alive && op.ready, () => endActivation(op)],
-    ["undo", "Undo activation", mine && canUndoActivation(op), () => undoActivation(op)],
+    ["expend", "Mark expended", mine && op.alive && op.ready, cur => endActivation(cur)],
+    ["undo", "Undo activation", mine && canUndoActivation(op), cur => undoActivation(cur)],
   ];
   const why = !op.alive ? "Incapacitated" : !mine ? "Not yours to change" : !op.ready ? "Expended" : op.used.length ? "Activating" : "Ready";
   menu = document.createElement("div");
@@ -35,7 +36,11 @@ export function openOpMenu(op, x, y) {
     const b = ev.target.closest("button[data-k]");
     if (!b || b.disabled) return;
     const it = items.find(i => i[0] === b.dataset.k);
-    closeOpMenu(); it[3]();
+    closeOpMenu();
+    // network state may have replaced the operative objects while the menu was open:
+    // act on the current one (both actions re-check alive / ready / control themselves)
+    const cur = OPS.find(o => o.id === op.id);
+    if (cur) it[3](cur);
   });
   menu.addEventListener("contextmenu", ev => ev.preventDefault());
   const first = menu.querySelector("button:not([disabled])");

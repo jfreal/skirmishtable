@@ -23,8 +23,14 @@ export const undoExtras = [];
 // so the entry freezes the moment one starts acting. Local to this browser.
 const actStart = new Map();
 const untouched = o => o.ready && !o.used.length && o.ap === o.apl;
+// An order change costs no AP, so it can be the first thing an activation does: the record
+// taken before it (same turning point, same spot, different order) must not be refreshed.
+const orderChanged = o => {
+  const st = actStart.get(o.id);
+  return !!st && !!RULES.orders && st.tp === tray.tp && st.order !== o.order && st.x === o.x && st.y === o.y && st.z === (o.z || 0);
+};
 export function snapshot() {
-  for (const o of OPS) if (o.alive && untouched(o)) actStart.set(o.id, {tp: tray.tp, x: o.x, y: o.y, z: o.z || 0, order: o.order});
+  for (const o of OPS) if (o.alive && untouched(o) && !orderChanged(o)) actStart.set(o.id, {tp: tray.tp, x: o.x, y: o.y, z: o.z || 0, order: o.order});
   undoStack.push(JSON.stringify({ops:OPS, tray, extras: undoExtras.map(x => x.get())}));
   if (undoStack.length > 40) undoStack.shift();
 }
@@ -193,7 +199,7 @@ export function renderCard() {
       <button id="shootbtn" ${(!state.target || !state.lastShot || !SHOT_KINDS[state.lastShot.kind].valid || cannotShoot(selEye()) || WPN[state.sel.weapon].type!=="R") ? "disabled" : ""}>Shoot 1AP</button>
       <button id="fightbtn" ${meleeFoes.length ? "" : "disabled"}>Fight 1AP</button>
     </div>`;
-  if (RULES.orders) c.querySelector("#ordbtn").onclick = () => { state.sel.order = state.sel.order === "conceal" ? "engage" : "conceal"; refreshSight(); renderAll(); };
+  if (RULES.orders) c.querySelector("#ordbtn").onclick = () => { snapshot(); state.sel.order = state.sel.order === "conceal" ? "engage" : "conceal"; refreshSight(); renderAll(); };
   c.querySelector("#endact").onclick = () => endActivation(state.sel);
   c.querySelectorAll("input[name=wpn]").forEach(r => r.onchange = () => { state.sel.weapon = r.value; refreshSight(); renderAll(); });
   c.querySelector("#wdn").onclick = () => adjustWounds(state.sel, -1);
@@ -304,7 +310,7 @@ export function endActivation(op) {
   logLine(`<b>${op.name}</b> activation ends.`); cancelMode(); renderAll();
 }
 // Something to undo: the operative has acted, or is expended.
-export const canUndoActivation = op => !!op && op.alive && !untouched(op);
+export const canUndoActivation = op => !!op && op.alive && (!untouched(op) || orderChanged(op));
 // Put an operative back as it was when its activation began: where it stood, its order,
 // ready with full AP. Wounds stay as they are (they may come from the other side).
 export function undoActivation(op) {
@@ -326,6 +332,7 @@ export function refreshSight() {
 export function toggleOrder(oid) {
   const o = OPS.find(z => z.id === oid);
   if (!o || !o.alive || !mayControl(o)) return;
+  snapshot();
   o.order = o.order === "conceal" ? "engage" : "conceal";
   refreshSight();
   logLine(`<b>${o.name}</b> order: ${o.order === "conceal" ? "◖ Conceal" : "▲ Engage"}.`);
