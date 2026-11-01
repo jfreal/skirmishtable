@@ -15,6 +15,58 @@ Testing: add `?net=local` to the address and tabs of one browser talk over a
 BroadcastChannel instead of WebRTC (no network). `tests/e2e/online.spec.js` uses it: host
 and guest in two tabs, moves both ways, a refused move, End TP, Undo, the map lock.
 
+## Fair dice
+
+**Status: built.** Online with both players at the table, no browser rolls on its own.
+Every roll (Shoot, Fight, the dice boxes and their re-rolls) is a shared roll that neither
+player can choose or foresee, and each browser checks the other's dice and wounds. The Play
+online panel says **Fair dice: shared rolls · N checked**, and a roll's log line ends in
+**fair roll #N**. Offline, or while the host is alone, dice are `Math.random` as before.
+
+How a roll works (commit-reveal, `src/net/fairdice.js`):
+
+1. Each browser makes a random 128-bit secret for each roll and first sends only its
+   SHA-256 hash, a "commitment": it can't change the secret afterwards.
+2. The roller (the side acting) sends what it rolls for (this shot with these terms, these
+   dice in the box) and reveals its secret, with the commitment for its next one.
+3. The other browser checks the secret against the commitment, then reveals its own.
+4. The dice are SHA-256 of both secrets and the roll's number, in both browsers. Neither
+   secret could be picked to steer them: each was fixed before the other was known.
+
+Commitments ride along with each answer, so a roll costs one message each way. Each side
+numbers its own rolls, so both players can roll at once.
+
+The checks:
+
+- The roller puts the result in the game as before and the update says which rolls it holds.
+  The other browser works those rolls out from the dice itself (`rollProblem`): both dice
+  trays, and the wounds a Shoot or Fight changed.
+- Without a roll, dice in a tray can only be cleared, not changed, and a player can't
+  change the wounds of the other side's operatives (its own, by hand, it can). A roll is
+  only taken from the player whose roll it was, so one can't replay the other's rolls.
+- Messages are size-checked and only the last 64 rolls are kept.
+- The host refuses a guest's update that doesn't add up (the guest's table snaps back, as
+  for a move it isn't allowed). The host is the referee, so a guest can't refuse; it puts a
+  ⚠ line in its log instead.
+- A roll that is never used (rolled, didn't like it, rolled again) gets a ⚠ line on the
+  other side when the next roll comes, with a running count. A roll the roller says it
+  couldn't use (the target died meanwhile) is a `void` message: it frees the next roll and is
+  logged and counted, not blocked. This detects discarding; it can't prevent it.
+- The other browser also judges the shot itself (cover, obscured, Accurate) and the fight's
+  control range, and warns if it sees it differently. It only warns: refusing to answer
+  would let a player block the other's rolls.
+- Online, a shared roll (Shoot, Fight or the dice box) can't be undone (Undo stops at it), or Undo would be a re-roll.
+
+What it doesn't cover: a browser can still refuse to answer a roll it doesn't like (the
+roller sees no answer after 15 seconds); nothing checks moves; the host still holds the
+true game; and watchers don't check rolls. Hand-applied damage (−1 W) is still allowed and
+logged.
+
+Code: `fairdice.js` (pure: SHA-256, the dice, the checks, the two-browser protocol; tested
+in Node in `tests/unit/fairdice.test.js`), `roll.js` (where Shoot, Fight and the dice boxes
+get their dice), `sync.js` (pairing the two players, marking and checking updates).
+`tests/e2e/fairdice.spec.js` rolls in two tabs and tries changing dice by hand on each side.
+
 ## Share links
 
 **Status: built.** Press **Share this game** (Play online panel) and send the link. Whoever
@@ -189,6 +241,7 @@ can't drift out of step. A late joiner gets the same full state.
 Later, if cheating or two people acting at once becomes a problem, move dice to the host:
 pull the rules part of `doShoot()` / `doFight()` out of the UI into a function like
 `resolveShoot(shooterId, targetId, sight)` that the host runs. Not needed for friends.
+(Built differently: see "Fair dice" above. Dice come from both browsers, not the host.)
 
 **Undo** goes to the host. A guest presses Undo, the host pops its stack and sends the
 result. Simple rule: anyone may undo the last action. Players sort out disputes by talking.

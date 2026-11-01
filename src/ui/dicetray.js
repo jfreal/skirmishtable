@@ -27,13 +27,14 @@ export const tally = (dice, hit) => ({
 const fmt = (dice, hit) => dice.map(v => v === 6 ? `<span class="crit">6</span>` : v >= hit && v !== 1 ? `${v}` : `<span class="dice">${v}</span>`).join(" ");
 
 // a roll whose dice were already thrown (the dice box decides them as they leave the hand);
-// `rerolled`: dice of it that have used their re-roll (new dice thrown in beside old ones)
-export function setRoll(values, who, label = "", rerolled = []) {
+// `rerolled`: dice of it that have used their re-roll (new dice thrown in beside old ones);
+// `note`: the log's mark for a shared roll online
+export function setRoll(values, who, label = "", rerolled = [], note = "") {
   const t = tray(who);
   t.label = label; t.dice = values.slice(0, 20); t.rerolled = [...new Set(rerolled)].filter(i => i < t.dice.length);
   const c = tally(t.dice, t.hit);
   logLine(`<b>${TEAMNAME[t.who]}</b> rolls ${t.dice.length}D (${t.hit}+)${label ? " " + label : ""} — ` +
-    `[${fmt(t.dice, t.hit)}] → <b>${c.crit} crit, ${c.norm} hit</b>`);
+    `[${fmt(t.dice, t.hit)}] → <b>${c.crit} crit, ${c.norm} hit</b>${note}`);
   changed();
 }
 // dice from Shoot / Fight, into that side's tray, so both players see them land
@@ -44,7 +45,7 @@ export function showRoll(dice, hit, who, label) {
 // re-roll several dice at once (picked up out of their slots and thrown again): one log line.
 // Each die re-rolls once; a die that already has is left as it was.
 export const wasRerolled = (who, i) => tray(who).rerolled.includes(i);
-export function rerollDice(who, idx, values) {
+export function rerollDice(who, idx, values, note = "") {
   const t = tray(who);
   const ok = idx.map((i, k) => [i, values[k]]).filter(([i]) => i >= 0 && i < t.dice.length && !t.rerolled.includes(i));
   if (!ok.length) return;
@@ -52,7 +53,7 @@ export function rerollDice(who, idx, values) {
   for (const [i, v] of ok) t.dice[i] = v;
   t.rerolled = [...new Set([...t.rerolled, ...ok.map(([i]) => i)])];
   const c = tally(t.dice, t.hit);
-  logLine(`<b>${TEAMNAME[t.who]}</b> re-rolls: ${was.join(" ")} → <b>${ok.map(([, v]) => v).join(" ")}</b> · now [${fmt(t.dice, t.hit)}] → <b>${c.crit} crit, ${c.norm} hit</b>`);
+  logLine(`<b>${TEAMNAME[t.who]}</b> re-rolls: ${was.join(" ")} → <b>${ok.map(([, v]) => v).join(" ")}</b> · now [${fmt(t.dice, t.hit)}] → <b>${c.crit} crit, ${c.norm} hit</b>${note}`);
   changed();
 }
 export function setHit(who, h) { tray(who).hit = Math.max(2, Math.min(6, h | 0)); changed(); }
