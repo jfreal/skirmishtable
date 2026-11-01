@@ -305,18 +305,20 @@ export function createFair({ send, warn = () => {}, check = () => null, timeout 
   // the rolls put into the game since the last update (to send with it)
   const take = () => out.splice(0);
   // the other browser's update: are these rolls (tags [{s, n}]) in it as they fell?
-  function verify(prev, nextGame, tags) {
+  // `echo`: the host passing on this browser's own update, so it may hold this side's
+  // rolls and this side's own hand-made wound changes; otherwise only the sender's rolls.
+  function verify(prev, nextGame, tags, echo = false) {
     if (!peer) return null;
     const list = [];
     for (const t of Array.isArray(tags) ? tags.slice(0, 8) : []) {
       const r = t && recs.get(key(t.s, t.n));
       if (!r) return "a roll that never happened";
-      if (r.s !== them) return "a roll that isn't the sender's own";
+      if (r.s !== (echo ? me : them)) return "a roll that isn't the sender's own";
       if (r.seen) return `${SIDE[r.s]}'s roll #${r.n + 1} used twice`;
       list.push(r);
     }
     for (const r of list) r.seen = true;
-    const why = rollProblem(prev, nextGame, list, them);
+    const why = rollProblem(prev, nextGame, list, echo ? me : them);
     if (!why) checked += list.length;
     return why;
   }

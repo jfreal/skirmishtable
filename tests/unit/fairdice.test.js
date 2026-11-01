@@ -139,6 +139,22 @@ describe("the shared roll between two browsers", () => {
     expect(warnings).toEqual({ A: [], B: [] });
   });
 
+  it("checks the host passing on this browser's own roll, but not someone else's roll as its own", () => {
+    const { A, B, run } = pairUp();
+    let dice = null;
+    B.roll({ k: "tray", side: 1, idx: [], add: 3 }, (die, done) => { dice = Array.from({ length: 3 }, die); done(); });
+    run();
+    const [tag] = B.take();
+    const prev = game(), next = wire(prev); next.dice[1].dice = dice;
+    expect(A.verify(prev, next, [tag])).toBe(null);           // the host checks Slate's update
+    expect(B.verify(prev, next, [tag], true)).toBe(null);     // Slate checks the host's echo of it
+    expect(B.checked()).toBe(1);
+    // the host can't pass off Slate's roll as one of its own
+    B.roll({ k: "tray", side: 1, idx: [], add: 3 }, (die, done) => done());
+    run();
+    expect(B.verify(prev, next, B.take())).toMatch(/isn't the sender's own/);
+  });
+
   it("takes turns: each side rolls in its own run of numbers", () => {
     const { A, B, run } = pairUp();
     const seen = [];

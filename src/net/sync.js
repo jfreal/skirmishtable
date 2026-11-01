@@ -78,7 +78,7 @@ export const fair = createFair({
 });
 // Online with both players at the table: the shared roll. Otherwise Math.random, now.
 function roller(what, onDice, onFail) {
-  if (!online() || !fair.paired()) { onDice(d6, () => {}, null); return null; }
+  if (!online() || !fair.paired()) { onDice(d6, () => {}, null, () => {}); return null; }
   const why = fair.roll(what, onDice,
     why => { hint(`The roll didn't happen: ${why}.`); if (onFail) onFail(why); });
   return why;
@@ -268,7 +268,7 @@ function guestMessage(m, from) {
     // the host's dice: check them against the shared rolls (a guest can't refuse, only say so)
     const prevOps = lastHost && m.v === net.v + 1 && cleanOps(lastHost.ops, OPS);
     if (fair.paired() && prevOps) {
-      const why = fair.verify({ ops: prevOps, dice: lastHost.dice }, m.game, m.rolls);
+      const why = fair.verify({ ops: prevOps, dice: lastHost.dice }, m.game, m.rolls, m.from === selfId);
       if (why) note(`<b>Online:</b> ⚠ the host's last update doesn't add up: ${esc(why)}.`);
     }
     net.v = m.v | 0;
