@@ -85,10 +85,11 @@ export function renderMinis() {
     html += `</div>`;
     // add an operative: the team's models by name (the mod's copies of each counted)
     const full = ops.length >= MAX_SIDE ? " disabled" : "";
-    html += `<div class="miniadd"><span class="hint">Add (${ops.length}/${MAX_SIDE}):</span> ` + (team
+    html += `<div class="miniadd"><div class="hint">Add (${ops.length}/${MAX_SIDE})</div>` + (team
       ? modelGroups(team).map(g => `<button class="mini miniaddbtn" data-side="${side}" data-name="${esc(g.name)}"${off || full} ` +
-          `title="Add a ${esc(g.name)} (${g.w}W) to ${TEAMNAME[side]}">+ ${esc(g.name)}${g.idx.length > 1 ? ` ×${g.idx.length}` : ""}</button>`).join(" ")
-      : `<button class="mini miniaddbtn" data-side="${side}" data-name=""${off || full}>+ Operative</button>`) + `</div>`;
+          `title="Add a ${esc(g.name)} (${g.w}W) to ${TEAMNAME[side]}"><span>+ ${esc(g.name)}</span>` +
+          `<span class="hint">${g.idx.length > 1 ? `×${g.idx.length} · ` : ""}${g.w}W</span></button>`).join("")
+      : `<button class="mini miniaddbtn" data-side="${side}" data-name=""${off || full}><span>+ Operative</span></button>`) + `</div>`;
   }
   html += `<div class="hint">Models load from the Steam Workshop team mods into this browser; this site doesn't host them.</div>`;
   box.innerHTML = html;
