@@ -44,6 +44,13 @@ describe("adding and removing operatives", () => {
     expect(world.addOp(0, "Tzaangor Warrior (Blade & Shield)").name).toBe("Tzaangor Warrior (Blade and Shield)");
     expect(world.addOp(1, '<img src=x onerror="1">').name).not.toMatch(/[<>"&]/);
   });
+  it("keeps one operative a side even when the board has no free spot", () => {
+    world.buildWorld({ name: "full", w: 12, h: 8, objectives: [],
+      terrain: [{ id: "block", kind: "heavy", x: 0, y: 0, w: 12, h: 8, z: 3 }] });
+    expect(side(0)).toHaveLength(1);
+    expect(side(1)).toHaveLength(1);
+    expect(world.OPS.every(inZone)).toBe(true);
+  });
   it("stops at the side limit", () => {
     while (world.addOp(0, "Trooper"));
     expect(side(0)).toHaveLength(world.MAX_SIDE);
