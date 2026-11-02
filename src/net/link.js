@@ -8,14 +8,22 @@
  * JSON also says v:1. Operatives travel as short arrays of only the fields that change in
  * play (names, stats and weapons come from the opener's own roster, as online).
  */
+import { DEFAULT_ROSTER } from '../engine/world.js';
+
 export const LINK_V = 1;
 export const SOFT_MAX = 2000;            // characters a link can have and still survive most chat apps
 const HARD_MAX = 200000;                 // refuse to decode anything bigger
-export const OP_KEYS = ["id", "x", "y", "wounds", "ap", "order", "ready", "alive", "weapon", "used", "z"];
+// name and kind come last: they matter only for operatives added in the Miniatures panel,
+// which the opener's roster doesn't have (links from before them simply leave them out)
+export const OP_KEYS = ["id", "x", "y", "wounds", "ap", "order", "ready", "alive", "weapon", "used", "z", "name", "kind"];
 
+const PLAY_KEYS = OP_KEYS.indexOf("name");
+// a default-roster operative leaves its name and kind out (the cleaner knows them)
+const isDefault = o => DEFAULT_ROSTER.some(d => d[0] === o.id && d[2] === o.name && d[3] === o.kind);
 export function packGame(g, at = Date.now()) {
   const { ops, ...rest } = g;
-  return { v: LINK_V, at, ...rest, ops: (ops || []).map(o => OP_KEYS.map(k => o[k])) };
+  return { v: LINK_V, at, ...rest,
+    ops: (ops || []).map(o => OP_KEYS.slice(0, o && isDefault(o) ? PLAY_KEYS : OP_KEYS.length).map(k => o[k])) };
 }
 // Back to the shape exportGame() makes. Junk in, null out; fields are cleaned later.
 export function unpackGame(p) {

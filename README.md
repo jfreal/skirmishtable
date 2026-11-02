@@ -264,7 +264,10 @@ operative is the mod's base plus the miniature as its child object. Picking a te
 models into the browser (`src/view3d/units.js`, Unity bundles and OBJ scans read in workers), scaled
 so the base matches the ruleset's base. The invisible cylinder stays as the drag target, and
 a ring in the team colour (grey once spent) sits under each model. Choices are remembered per
-browser. Rebuild the catalog with `npm run tts:teams`; add a team by adding its Workshop id
+browser. The panel also builds each side's roster: the team's models are listed by name
+(duplicates counted, e.g. "+ Cultist ×8"); a click adds an operative as that model, at a free
+spot in the side's drop zone (next free id, e.g. `A7`, generic "trooper" profile), and × takes
+one off. The roster stays across a new map or a reset, and Undo covers it. Rebuild the catalog with `npm run tts:teams`; add a team by adding its Workshop id
 to `TEAMS` in `scripts/tts-teams.mjs`.
 
 ## Deploying (GitHub Pages)

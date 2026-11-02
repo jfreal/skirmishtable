@@ -97,8 +97,8 @@ describe("share links", () => {
     expect(g.at).toBe(null);
     world.buildWorld(world.MAPS.v1);
     const a1 = world.OPS.find(o => o.id === "A1");
-    // wrong roster size -> cleanOps refuses the lot; right size -> bad fields fall back
-    expect(cleanOps(g.ops, world.OPS)).toBe(null);
+    // junk entries are dropped; bad fields fall back to this browser's
+    expect(cleanOps(g.ops, world.OPS).map(o => o.id)).toEqual(["A1"]);
     const ops = cleanOps([g.ops[0], ...world.OPS.slice(1)], world.OPS);
     expect(ops[0]).toMatchObject({ x: a1.x, y: 2, wounds: a1.maxW, weapon: a1.weapon, used: ["dash"] });
     expect(packGame({ ops: [] }, 5)).toEqual({ v: 1, at: 5, ops: [] });

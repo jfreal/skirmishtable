@@ -60,7 +60,9 @@ route fields depend on the base size and costs.
      each terrain rect covers. Walls are filled per height section.
 3. `buildClearance()` builds the distance map, `buildLevels()` finds the upper floors, then the
    drop zones are set.
-4. `buildNav()` finds the climb portals, then `rosterInit()` places the operatives.
+4. `buildNav()` finds the climb portals, then `rosterInit()` places the operatives (six a
+   side by default; `loadMap()` passes `rosterDefs()`, so operatives added or removed in the
+   Miniatures panel with `addOp()` / `removeOp()` stay on a new map).
 
 `loadMap()` (`ui/controls.js`) adds the UI half: viewBox, static SVG layer, panels and 3D scene.
 

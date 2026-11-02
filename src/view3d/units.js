@@ -109,7 +109,7 @@ function template(model) {
     const fc = foot.getCenter(new THREE.Vector3()), feet = base ? base.b.max.y : all.min.y;
     const frame = { x: fc.x, z: fc.z, foot: feet, H: all.max.y - feet };
     for (const m of inner.children) {
-      if (base && m === base.m) continue;
+      if ((base && m === base.m) || !m.isMesh || !m.geometry || !m.geometry.attributes.position) continue;
       const f = idleFields(m.geometry.attributes.position.array, m.matrixWorld.elements, frame);
       if (f) m.geometry = idleGeometry(m.geometry, f);
     }
@@ -160,15 +160,19 @@ function spentClone(obj) {
   const u = { value: 0 };
   obj.traverse(m => {
     if (!m.isMesh) return;
-    const idle = !!m.geometry.userData.idle, prev = idle ? m.material.onBeforeCompile : null;
-    const mat = idle ? m.material : m.material.clone();   // idleClone already gave this one its own
-    mat.onBeforeCompile = function (shader, r) {
-      if (prev) prev.call(this, shader, r);
-      shader.uniforms.uSpent = u;
-      shader.fragmentShader = "uniform float uSpent;\n" + shader.fragmentShader.replace("#include <map_fragment>", SPENT_GLSL);
-    };
-    mat.customProgramCacheKey = () => idle ? "idle+spent" : "spent";   // the two patches compile apart
-    m.material = mat;
+    const idle = !!m.geometry.userData.idle, list = Array.isArray(m.material) ? m.material : [m.material];
+    const out = list.map(src => {
+      const prev = idle ? src.onBeforeCompile : null;
+      const mat = idle ? src : src.clone();   // idleClone already gave this one its own
+      mat.onBeforeCompile = function (shader, r) {
+        if (prev) prev.call(this, shader, r);
+        shader.uniforms.uSpent = u;
+        shader.fragmentShader = "uniform float uSpent;\n" + shader.fragmentShader.replace("#include <map_fragment>", SPENT_GLSL);
+      };
+      mat.customProgramCacheKey = () => idle ? "idle+spent" : "spent";   // the two patches compile apart
+      return mat;
+    });
+    m.material = Array.isArray(m.material) ? out : out[0];
   });
   return u;
 }

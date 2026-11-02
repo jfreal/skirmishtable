@@ -140,12 +140,19 @@ button.restricted { opacity: .5; }
   @keyframes engpulse { 0%, 100% { opacity: .55; } 50% { opacity: 1; } }
 }
 @media (max-width: 760px) { aside { flex-basis: 100%; } }
-/* Miniatures panel: team per side, then a model per operative */
+/* Miniatures panel: team per side, then each operative's model, and models to add */
 .minirow { display: flex; align-items: center; gap: 8px; margin: 6px 0; }
 .minirow select { flex: 1; min-width: 0; }
-.miniops { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 8px; margin: 0 0 8px; font-size: 12px; }
-.miniops label { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.miniops { display: flex; flex-direction: column; gap: 4px; margin: 0 0 8px; font-size: 12px; }
+.miniop { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.miniop .mid { white-space: nowrap; min-width: 6.5em; }
+.miniop .mname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .miniops select { flex: 1; min-width: 0; font-size: 12px; }
+.miniop .minirm { padding: 0 6px; font-size: 12px; }
+.miniadd { display: flex; flex-direction: column; gap: 3px; margin: 0 0 10px; font-size: 12px; }
+.miniadd .mini { display: flex; justify-content: space-between; gap: 8px; padding: 2px 8px; font-size: 12px; text-align: left; }
+.miniadd .mini span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.miniadd .mini .hint { flex: none; margin: 0; }
 /* Play online panel */
 .netline { margin: 2px 0 4px; }
 #netlink, #sharelink, #replaylink { flex: 1; min-width: 0; background: #262019; color: #e8e2d8; border: 1px solid #3a332a; border-radius: 4px; padding: 2px 6px; font-size: 12px; }

@@ -16,6 +16,7 @@
 import { fairNote, rollFor } from '../net/roll.js';
 import { TEAMNAME } from '../config.js';
 import { clearDice, diceTrays, mayRoll, onDiceRender, rerollDice, setHit, setRoll, tally, wasRerolled } from './dicetray.js';
+import { undoStack } from './panels.js';
 import { atRest, handOffsets, shaker, slotSpots, speed, stepDice } from './dicephys.js';
 
 const S = 22, R = S / 2;           // die size and collision radius, px
@@ -211,7 +212,10 @@ function makeBox(side, dock) {
     const thrown = rolling.filter(d => d.commit);
     for (const d of rolling) { d.mode = "glide"; d.commit = false; d.face = d.val; }
     const note = landing ? fairNote(landing.n) : "";
-    if (landing) { landing.done(); landing = null; }
+    if (landing) {
+      if (landing.n != null) undoStack.length = 0;   // a shared roll can't be undone (else: undo, then throw again)
+      landing.done(); landing = null;
+    }
     if (thrown.length) {
       const fresh = thrown.filter(d => d.idx == null);
       if (fresh.length) {

@@ -115,10 +115,13 @@ export function idleClone(obj, phase) {
   const ph = { value: phase };
   obj.traverse(m => {
     if (!m.isMesh || !m.geometry.userData.idle) return;
-    const mat = m.material.clone();
-    mat.userData.idlePhase = ph;
-    mat.onBeforeCompile = patch;
-    m.material = mat;
+    const out = (Array.isArray(m.material) ? m.material : [m.material]).map(src => {
+      const mat = src.clone();
+      mat.userData.idlePhase = ph;
+      mat.onBeforeCompile = patch;
+      return mat;
+    });
+    m.material = Array.isArray(m.material) ? out : out[0];
   });
 }
 // a steady phase per operative (from its id), spread over a minute

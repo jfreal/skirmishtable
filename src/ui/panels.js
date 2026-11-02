@@ -14,6 +14,7 @@ import { RULES, fmtIn, moveSpec } from '../rules/index.js';
 import { mayControl, online } from '../net/sync.js';
 import { showRoll } from './dicetray.js';
 import { fairNote, rollFor } from '../net/roll.js';
+import { renderMinis } from './minis.js';
 
 /* ---------- state / undo / log ---------- */
 export let tray = {tp:1, cp:[3,3], vp:[0,0]};
@@ -44,7 +45,7 @@ export function doUndo() {
   if (state.sel) state.sel = OPS.find(x => x.id === state.sel.id) || null;
   state.target = null; state.lastShot = null; cancelMode();
   logLine("Undid last action.");
-  renderAll();
+  renderAll(); renderMinis();             // the roster may have changed (Miniatures panel)
   return true;
 }
 

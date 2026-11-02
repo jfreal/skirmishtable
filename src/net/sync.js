@@ -150,7 +150,7 @@ function flush() {
   queued = false;
   if (!online() || applying) return;
   const g = exportGame(), s = sig(g);
-  if (s === lastSig && !fair.pending()) { outbox = []; return; }   // a roll still to send goes even if it changed nothing   // nothing changed: log lines were local feedback
+  if (s === lastSig && !fair.pending()) { outbox = []; return; }   // nothing changed: log lines were local feedback; a roll still to send goes even if it changed nothing
   if (net.role === "host") {
     net.v++;
     send({ t: "state", v: net.v, game: outGame(g), log: outbox, from: selfId, rolls: fair.take() });
@@ -227,7 +227,21 @@ function hostMessage(m, from) {
     saveHost();
     renderFair();
   } else if (m.t === "undo") {
-    if ((net.peers[from] === 0 || net.peers[from] === 1) && !doUndo())   // doUndo renders, so pump() sends it
+    const seat = net.peers[from];
+    if (seat !== 0 && seat !== 1) return;
+    // the undo stack is shared: a player may only take it back to where they could have put
+    // it themselves, the same check as their updates (no moving or removing the other side's
+    // operatives; readying them, as End TP's undo does, is fine)
+    const top = undoStack.length ? JSON.parse(undoStack[undoStack.length - 1]) : null;
+    // (the ops panel's mission is undo's one extra, ops.js: a guest can't undo the host's Crit Op)
+    const prev = exportGame();
+    const mission = top && Array.isArray(top.extras) && top.extras[0] !== undefined ? top.extras[0] : prev.mission;
+    const why = top && updateProblem(prev, { ...prev, ops: top.ops, tray: top.tray, mission }, seat);
+    if (why) {
+      send({ t: "note", text: `Can't undo: ${why}.` }, from);
+      return;
+    }
+    if (!doUndo())   // doUndo renders, so pump() sends it
       send({ t: "note", text: "Nothing to undo. Online, a shared roll can't be taken back." }, from);
   }
 }
