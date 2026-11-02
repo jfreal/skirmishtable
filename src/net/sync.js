@@ -229,11 +229,13 @@ function hostMessage(m, from) {
   } else if (m.t === "undo") {
     const seat = net.peers[from];
     if (seat !== 0 && seat !== 1) return;
-    // the undo stack is shared: a player may only take back what leaves the other side as it is
+    // the undo stack is shared: a player may only take it back to where they could have put
+    // it themselves, the same check as their updates (no moving or removing the other side's
+    // operatives; readying them, as End TP's undo does, is fine)
     const top = undoStack.length ? JSON.parse(undoStack[undoStack.length - 1]) : null;
-    const other = o => JSON.stringify(o.filter(x => x.team !== seat));
-    if (top && other(top.ops) !== other(OPS)) {
-      send({ t: "note", text: "Can't undo: the last action changed the other side." }, from);
+    const prev = exportGame(), why = top && updateProblem(prev, { ...prev, ops: top.ops, tray: top.tray }, seat);
+    if (why) {
+      send({ t: "note", text: `Can't undo: ${why}.` }, from);
       return;
     }
     if (!doUndo())   // doUndo renders, so pump() sends it

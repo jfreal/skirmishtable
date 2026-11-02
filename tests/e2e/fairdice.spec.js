@@ -10,7 +10,9 @@ async function table(context) {
   const errors = [];
   const host = await context.newPage(), guest = await context.newPage();
   for (const p of [host, guest]) p.on('pageerror', e => errors.push(e.message));
-  await host.goto('/?net=local');
+  // drop-zone deployment: the demo scatter would put A1 anywhere, sometimes behind terrain
+  // from the spot the shot test puts B1 at
+  await host.goto('/?net=local&deploy=zones');
   await host.getByRole('button', { name: 'Host a game' }).click();
   await guest.goto(await host.locator('#netlink').inputValue());
   await expect(guest.locator('#netbox')).toContainText('you: Slate');
