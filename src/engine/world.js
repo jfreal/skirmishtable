@@ -85,11 +85,23 @@ export function rosterInit(defs = DEFAULT_ROSTER) {
     const want = defs.filter(d => d[1] === team).length - spawns[team].length;
     if (want > 0) spawns[team].push(...autoSpawn(team, want, spawns[team]));
   }
-  const idx = [0, 0];
-  OPS = defs.map(([id, team, name, kind]) => {
-    const p = spawns[team][idx[team]++] || [team === 0 ? 1.5 : BW - 1.5, 1.5 + idx[team] * 1.6];
-    return mkOp(id, team, name, kind, p[0], p[1]);
-  });
+  const idx = [0, 0], placed = [];
+  const out = [];
+  for (const [id, team, name, kind] of defs) {
+    let p = spawns[team][idx[team]++];
+    if (!p) p = anyFreeSpot(placed);   // the drop zone is full: any free spot on the board
+    if (!p) continue;                  // no room anywhere: leave the operative out, never overlap terrain
+    placed.push([p[0], p[1]]);
+    out.push(mkOp(id, team, name, kind, p[0], p[1]));
+  }
+  OPS = out;
+}
+// A spot on the board that is clear of terrain and of the spots in `taken`, or null.
+function anyFreeSpot(taken) {
+  for (let y = 1.2; y <= BH - 1.2; y += 1.5)
+    for (let x = 1.2; x <= BW - 1.2; x += 1.5)
+      if (spawnFree(x, y, taken)) return [x, y];
+  return null;
 }
 
 /* ---------- adding and removing operatives (the Miniatures panel) ---------- */
