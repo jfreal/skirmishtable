@@ -150,7 +150,7 @@ function flush() {
   queued = false;
   if (!online() || applying) return;
   const g = exportGame(), s = sig(g);
-  if (s === lastSig && !fair.pending()) { outbox = []; return; }   // a roll still to send goes even if it changed nothing   // nothing changed: log lines were local feedback
+  if (s === lastSig && !fair.pending()) { outbox = []; return; }   // nothing changed: log lines were local feedback; a roll still to send goes even if it changed nothing
   if (net.role === "host") {
     net.v++;
     send({ t: "state", v: net.v, game: outGame(g), log: outbox, from: selfId, rolls: fair.take() });

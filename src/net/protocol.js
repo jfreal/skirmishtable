@@ -117,7 +117,7 @@ const ACTS = ["reposition", "dash", "charge", "shoot", "fight"];
 // The incoming list says who is on the table: an operative this browser doesn't have yet
 // (added in the other browser's Miniatures panel) is made here from its id, a known kind
 // and a cleaned name. Null when nothing usable arrived.
-const OP_ID = /^[AB]\d{1,2}$/;
+const OP_ID = /^[AB][1-9]\d?$/;
 export const opTeam = id => typeof id === "string" && OP_ID.test(id) ? (id[0] === "A" ? 0 : 1) : null;
 export function cleanOps(incoming, local) {
   if (!Array.isArray(incoming)) return null;

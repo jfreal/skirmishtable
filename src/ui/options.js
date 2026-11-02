@@ -12,6 +12,7 @@ export const options = {panSpeed: 1, cardLayout: "chips", idle: calm ? "off" : "
 // only what the player set is stored, so a default (idle under reduced motion) stays a default
 let stored = {};
 try { stored = JSON.parse(localStorage.getItem(KEY)) || {}; Object.assign(options, stored); } catch (e) {}
+if (typeof stored !== "object" || Array.isArray(stored)) stored = {};   // a hand-edited value must not break setOption
 if (!(options.panSpeed >= 0.25 && options.panSpeed <= 3)) options.panSpeed = 1;   // a hand-edited or corrupt value must not NaN the camera
 if (!["chips", "drawer"].includes(options.cardLayout)) options.cardLayout = "chips";
 if (!["on", "off"].includes(options.idle)) options.idle = calm ? "off" : "on";
