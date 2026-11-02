@@ -120,3 +120,20 @@ test("a guest's Undo can't take back the host's roster change", async ({ context
   expect(await ids(host)).toContain('A7');
   expect(errors).toEqual([]);
 });
+
+test("a guest's Undo can't take back the host's Crit Op", async ({ context }) => {
+  const errors = [];
+  const host = await context.newPage(), guest = await context.newPage();
+  for (const p of [host, guest]) p.on('pageerror', e => errors.push(e.message));
+  await host.goto('/?net=local&deploy=zones');
+  await host.getByRole('button', { name: 'Host a game' }).click();
+  await guest.goto(await host.locator('#netlink').inputValue());
+  await expect(guest.locator('#netbox')).toContainText('you: Slate');
+
+  await host.locator('#opcrit').selectOption({ index: 3 });
+  await expect(guest.locator('#opcrit')).toHaveValue('2');
+  await guest.locator('#undo').click();
+  await expect(guest.locator('#hint')).toContainText("Can't undo");
+  await expect(host.locator('#opcrit')).toHaveValue('2');
+  expect(errors).toEqual([]);
+});

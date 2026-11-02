@@ -233,7 +233,10 @@ function hostMessage(m, from) {
     // it themselves, the same check as their updates (no moving or removing the other side's
     // operatives; readying them, as End TP's undo does, is fine)
     const top = undoStack.length ? JSON.parse(undoStack[undoStack.length - 1]) : null;
-    const prev = exportGame(), why = top && updateProblem(prev, { ...prev, ops: top.ops, tray: top.tray }, seat);
+    // (the ops panel's mission is undo's one extra, ops.js: a guest can't undo the host's Crit Op)
+    const prev = exportGame();
+    const mission = top && Array.isArray(top.extras) && top.extras[0] !== undefined ? top.extras[0] : prev.mission;
+    const why = top && updateProblem(prev, { ...prev, ops: top.ops, tray: top.tray, mission }, seat);
     if (why) {
       send({ t: "note", text: `Can't undo: ${why}.` }, from);
       return;
