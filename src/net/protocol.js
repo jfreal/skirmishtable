@@ -5,7 +5,7 @@
  */
 
 import { BASE_SIZES } from "../config.js";
-import { DEFAULT_ROSTER, KINDS, MAX_SIDE, mkOp } from "../engine/world.js";
+import { DEFAULT_ROSTER, KINDS, MAX_SIDE, mkOp, opName } from "../engine/world.js";
 
 // room codes: no 0/O, 1/I/L, so they survive being read out loud
 const CODE_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
@@ -31,7 +31,7 @@ export function pickSeat(peers, hostSeat, want) {
 // Why the host refuses a player's update (null = fine). The check stops a browser moving
 // the other side's operatives, changing the map or rules, or a watcher changing anything.
 // Dice, and the wounds they do, are checked against the shared rolls (fairdice.js).
-const FIXED_FOR_FOES = ["x", "y", "order", "weapon"];
+const FIXED_FOR_FOES = ["x", "y", "order", "weapon", "name", "kind"];
 export function updateProblem(prev, next, seat) {
   if (seat !== 0 && seat !== 1) return "watchers can't change the game";
   if (!next || typeof next !== "object") return "empty update";
@@ -117,19 +117,21 @@ const ACTS = ["reposition", "dash", "charge", "shoot", "fight"];
 // and a cleaned name. Null when nothing usable arrived.
 const OP_ID = /^[AB]\d{1,2}$/;
 export const opTeam = id => typeof id === "string" && OP_ID.test(id) ? (id[0] === "A" ? 0 : 1) : null;
-export const cleanName = (v, d) => {
-  const s = typeof v === "string" ? v.replace(/[<>"&\u0000-\u001f]/g, "").trim().slice(0, 40) : "";
-  return s || d;
-};
 export function cleanOps(incoming, local) {
   if (!Array.isArray(incoming)) return null;
   const byId = new Map(local.map(l => [l.id, l])), seen = new Set(), out = [];
   for (const o of incoming.slice(0, 2 * MAX_SIDE)) {
     if (!o || typeof o !== "object" || opTeam(o.id) === null || seen.has(o.id)) continue;
     seen.add(o.id);
-    const def = DEFAULT_ROSTER.find(d => d[0] === o.id) || [o.id, 0, o.id, "trooper"];   // links leave those out
-    const l = byId.get(o.id) || mkOp(o.id, opTeam(o.id), cleanName(o.name, def[2]),
-      Object.hasOwn(KINDS, o.kind) ? o.kind : def[3], num(o.x, 1), num(o.y, 1));
+    // who it is: its name and kind, or the default roster's (links leave those out for it)
+    const dflt = DEFAULT_ROSTER.find(d => d[0] === o.id);
+    const name = typeof o.name === "string" ? opName(o.name, o.id) : dflt ? dflt[2] : null;
+    const kind = typeof o.kind === "string" ? (Object.hasOwn(KINDS, o.kind) ? o.kind : "trooper") : dflt ? dflt[3] : null;
+    // an id this browser has, but for a different operative (A2 removed, then a new A2
+    // added): made afresh, like one it doesn't have
+    const had = byId.get(o.id);
+    const same = had && (name === null || name === had.name) && (kind === null || kind === had.kind);
+    const l = same ? had : mkOp(o.id, opTeam(o.id), name || o.id, kind || "trooper", num(o.x, 1), num(o.y, 1));
     out.push({ ...l,
       x: num(o.x, l.x), y: num(o.y, l.y), z: Math.max(0, Math.min(8, num(o.z, 0))),
       wounds: Math.max(0, Math.min(l.maxW, num(o.wounds, l.wounds))), ap: num(o.ap, l.ap),

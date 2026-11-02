@@ -38,8 +38,8 @@ export const KINDS = {
   trooper:  {apl:2, move:6, save:4, wounds:9,  weapons:["firearm","knife"]},
 };
 export function mkOp(id, team, name, kind, x, y) {
-  const t = KINDS[kind] || KINDS.trooper;
-  if (!KINDS[kind]) kind = "trooper";
+  if (!Object.hasOwn(KINDS, kind)) kind = "trooper";
+  const t = KINDS[kind];
   return {id, team, name, kind, x, y, z:0, apl:t.apl, move:t.move, save:t.save,
           maxW:t.wounds, wounds:t.wounds, weapons:[...t.weapons], weapon:t.weapons[0],
           order:"conceal", ready:true, ap:t.apl, used:[], alive:true};
@@ -94,6 +94,12 @@ export function rosterInit(defs = DEFAULT_ROSTER) {
 
 /* ---------- adding and removing operatives (the Miniatures panel) ---------- */
 export const SIDE_LETTER = ["A", "B"];
+// An operative's name as it may appear in the page: no markup characters, one line, at most
+// 64 characters. Added operatives are named through this, and so are ones from other browsers.
+export const opName = (v, d) => {
+  const s = typeof v === "string" ? v.replace(/&/g, "and").replace(/[<>"\u0000-\u001f]/g, " ").replace(/\s+/g, " ").trim().slice(0, 64) : "";
+  return s || d;
+};
 export const MAX_SIDE = 30;   // operatives a side may field
 // the lowest free id on a side: A7 after A1–A6, or A3 again once A3 is gone
 export function nextOpId(team) {
@@ -102,17 +108,18 @@ export function nextOpId(team) {
   return null;
 }
 // A new operative for a side, named after its model ("Cultist", then "Cultist 2"…), at a
-// free spot in the side's drop zone. Null when the side is full.
+// free spot in the side's drop zone. Null when the side is full or its drop zone has no room.
 export function addOp(team, name = "Operative", kind = "trooper") {
   if (OPS.filter(o => o.team === team).length >= MAX_SIDE) return null;
   const id = nextOpId(team);
   if (!id) return null;
   const names = new Set(OPS.filter(o => o.team === team).map(o => o.name));
-  let nm = name;
-  for (let k = 2; names.has(nm); k++) nm = `${name} ${k}`;
+  const base = opName(name, "Operative").slice(0, 60);
+  let nm = base;
+  for (let k = 2; names.has(nm); k++) nm = `${base} ${k}`;
   const taken = OPS.filter(o => o.alive).map(o => [o.x, o.y]);
-  const p = autoSpawn(team, 1, taken)[0]
-    || [team === 0 ? DROPZONES[0].x + 1 : DROPZONES[1].x + DROPZONES[1].w - 1, BH / 2];
+  const p = autoSpawn(team, 1, taken)[0];
+  if (!p) return null;
   const op = mkOp(id, team, nm, kind, +p[0].toFixed(2), +p[1].toFixed(2));
   OPS.push(op);
   return op;

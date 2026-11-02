@@ -32,7 +32,10 @@ export function addOperative(side, name) {
   const team = teamOf(side), g = team && modelGroups(team).find(x => x.name === name);
   snapshot();
   const op = addOp(side, g ? g.name : "Operative");
-  if (!op) { hint(`A side fields at most ${MAX_SIDE} operatives.`); return null; }
+  if (!op) {
+    hint(OPS.filter(o => o.team === side).length >= MAX_SIDE ? `A side fields at most ${MAX_SIDE} operatives.` : `No room left in ${TEAMNAME[side]}'s drop zone.`);
+    return null;
+  }
   if (g) {
     const used = new Set(OPS.filter(o => o.team === side && o !== op).map(o => modelIndex(o, team.models.length)));
     setPick(side, op.id, g.idx.find(i => !used.has(i)) ?? g.idx[0]);

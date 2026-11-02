@@ -39,6 +39,11 @@ describe("adding and removing operatives", () => {
     expect(world.removeOp("B1")).toBe(false);
     expect(side(1).map(o => o.id)).toEqual(["B1"]);
   });
+  it("gives an unknown kind the trooper profile, and cleans names", () => {
+    expect(world.mkOp("A9", 0, "X", "constructor", 1, 1).kind).toBe("trooper");
+    expect(world.addOp(0, "Tzaangor Warrior (Blade & Shield)").name).toBe("Tzaangor Warrior (Blade and Shield)");
+    expect(world.addOp(1, '<img src=x onerror="1">').name).not.toMatch(/[<>"&]/);
+  });
   it("stops at the side limit", () => {
     while (world.addOp(0, "Trooper"));
     expect(side(0)).toHaveLength(world.MAX_SIDE);
@@ -67,6 +72,19 @@ describe("a changed roster on the wire", () => {
     expect(got.map(o => o.id)).toEqual([...world.OPS.map(o => o.id), "A7"]);
     expect(got.find(o => o.id === "A7")).toMatchObject({ team: 0, name: "Cultist", kind: "trooper" });
     expect(got.find(o => o.id === "A1").name).toBe("Vekk");
+  });
+  it("makes a reused id afresh when it's a different operative", () => {
+    world.removeOp("A2"); world.addOp(0, "Cultist");                // the new A2
+    const sent = unpackGame(JSON.parse(JSON.stringify(packGame(game())))).ops;
+    world.buildWorld(world.MAPS.v1);                                 // the opener's A2 is still Moss
+    expect(cleanOps(sent, world.OPS).find(o => o.id === "A2")).toMatchObject({ name: "Cultist", kind: "trooper" });
+    // the other way round: a link's default A2 (no name sent) over the opener's own Cultist A2
+    const dflt = unpackGame(JSON.parse(JSON.stringify(packGame(game())))).ops;
+    world.removeOp("A2"); world.addOp(0, "Cultist");
+    expect(cleanOps(dflt, world.OPS).find(o => o.id === "A2")).toMatchObject({ name: "Moss", kind: "marksman" });
+    // online: the same operative keeps this browser's object
+    const same = JSON.parse(JSON.stringify(world.OPS));
+    expect(cleanOps(same, world.OPS).find(o => o.id === "A2").name).toBe("Cultist");
   });
   it("cleans a made-up operative's name and kind", () => {
     const [a] = cleanOps([{ id: "B9", name: "<img src=x onerror=alert(1)>", kind: "god", x: 3, y: 4 }], world.OPS);
@@ -101,6 +119,9 @@ describe("online: each player builds their own side", () => {
     expect(updateProblem(prev, game(), 1)).toMatch(/own player/);
     world.buildWorld(world.MAPS.v1); world.removeOp("A2");
     expect(updateProblem(prev, game(), 1)).toMatch(/other player/);
+    world.buildWorld(world.MAPS.v1);
+    const renamed = game(); renamed.ops[0].name = "Mine now";
+    expect(updateProblem(prev, renamed, 1)).toMatch(/other player/);
     const dup = game(); dup.ops.push({ ...dup.ops[7] });
     expect(updateProblem(prev, dup, 1)).toMatch(/roster/);
   });

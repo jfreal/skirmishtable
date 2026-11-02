@@ -51,12 +51,14 @@ describe("the host's check", () => {
 });
 
 describe("cleaning what arrives", () => {
-  it("takes play fields only; names and stats stay this browser's", () => {
+  it("takes play fields only; stats come from this browser's profiles, names cleaned", () => {
     const local = roster();
     const sent = wire(local);
     Object.assign(sent[0], { name: "<img src=x onerror=alert(1)>", x: 7, wounds: 99, order: "evil", used: ["dash", "<b>"], weapon: "nope" });
     const [a] = cleanOps(sent, local);
-    expect(a.name).toBe("Vekk");
+    expect(a.name).not.toMatch(/[<>"&]/);           // a new name is a new operative: cleaned, stats from its kind
+    expect(a.maxW).toBe(local[0].maxW);
+    expect(cleanOps(wire(local), local)[0].name).toBe("Vekk");
     expect(a.x).toBe(7);
     expect(a.wounds).toBe(a.maxW);
     expect(a.order).toBe("conceal");
