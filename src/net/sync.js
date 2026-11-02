@@ -227,7 +227,16 @@ function hostMessage(m, from) {
     saveHost();
     renderFair();
   } else if (m.t === "undo") {
-    if ((net.peers[from] === 0 || net.peers[from] === 1) && !doUndo())   // doUndo renders, so pump() sends it
+    const seat = net.peers[from];
+    if (seat !== 0 && seat !== 1) return;
+    // the undo stack is shared: a player may only take back what leaves the other side as it is
+    const top = undoStack.length ? JSON.parse(undoStack[undoStack.length - 1]) : null;
+    const other = o => JSON.stringify(o.filter(x => x.team !== seat));
+    if (top && other(top.ops) !== other(OPS)) {
+      send({ t: "note", text: "Can't undo: the last action changed the other side." }, from);
+      return;
+    }
+    if (!doUndo())   // doUndo renders, so pump() sends it
       send({ t: "note", text: "Nothing to undo. Online, a shared roll can't be taken back." }, from);
   }
 }

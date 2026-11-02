@@ -90,7 +90,9 @@ export function rosterInit(defs = DEFAULT_ROSTER) {
   for (const [id, team, name, kind] of defs) {
     let p = spawns[team][idx[team]++];
     if (!p) p = anyFreeSpot(placed);   // the drop zone is full: any free spot on the board
-    if (!p) continue;                  // no room anywhere: leave the operative out, never overlap terrain
+    // no room anywhere: leave the operative out, but a side keeps at least one (its first spawn point)
+    if (!p && !out.some(o => o.team === team)) p = spawns[team][0] || autoSpawn(team)[0];
+    if (!p) continue;
     placed.push([p[0], p[1]]);
     out.push(mkOp(id, team, name, kind, p[0], p[1]));
   }
