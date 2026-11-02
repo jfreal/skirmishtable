@@ -86,7 +86,9 @@ How it fits:
 
 - `exportGame()` (or `outGame()` for an imported map) gives the game, as for online play.
   Operatives are cut to the fields that change in play, as short arrays; names, stats and
-  weapons come from the opener's own roster, exactly as `cleanOps` does online.
+  weapons come from the opener's own roster, exactly as `cleanOps` does online. An operative
+  the opener doesn't have (added in the Miniatures panel) also carries its name and kind,
+  and `cleanOps` makes it from those (cleaned name, known kind, team from the id).
 - That JSON is compressed with the browser's own `CompressionStream("deflate-raw")` and
   written as base64url (letters, digits, `-` and `_`, safe in any address).
 - The first `1.` is the format version, and the JSON carries `v: 1` too. A link from a
@@ -248,7 +250,8 @@ result. Simple rule: anyone may undo the last action. Players sort out disputes 
 
 **Seats.** The host picks a side, the first guest gets the other side, everyone after that
 watches. `armDrag()` and the action buttons do nothing for operatives that aren't yours.
-The Miniatures panel only lets you change your own side.
+The Miniatures panel only lets you change your own side, including adding and removing its
+operatives: `updateProblem` refuses an update that adds to or takes from the other side.
 
 ## The options
 

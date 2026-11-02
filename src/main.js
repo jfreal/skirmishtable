@@ -27,7 +27,8 @@ import { wireOptions } from './ui/options.js';
 import { wireSidePanel } from './ui/sidepanel.js';
 import * as table3d from './view3d/table3d.js';
 import * as rules from './rules/index.js';
-import { onMinisChange } from './view3d/units.js';
+import { minis, onMinisChange } from './view3d/units.js';
+import { TTS_TEAMS } from './data/tts-teams.js';
 
 wireInput();
 wireOpMenu();
@@ -59,4 +60,4 @@ if (window.THREE && THREE.OrbitControls) table3d.setView(true);   // the 3D tabl
 
 // Debug/test handle: live views of the engine modules and UI state, for the browser
 // console and the Playwright tests (e.g. skirmishtable.movement.findPath(...)).
-window.skirmishtable = { world, grid, movement, sight, rules, table3d, state, loadMap, useRuleset, renderAll, diceTrays };
+window.skirmishtable = { world, grid, movement, sight, rules, table3d, state, loadMap, useRuleset, renderAll, diceTrays, minis, teams: TTS_TEAMS };

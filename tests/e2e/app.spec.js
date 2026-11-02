@@ -330,3 +330,32 @@ test('switches rulesets: labels, base size and movement costs follow the rules',
   expect(inf.total).toBeCloseTo(2.4, 1);           // measured exactly
   await expect(page.locator('#log p').first()).toContainText('moves 2.4"');
 });
+
+test('the Miniatures panel adds and removes operatives, and undo brings one back', async ({ page }) => {
+  const ids = () => kz(page, () => skirmishtable.world.OPS.filter(o => o.team === 0).map(o => o.id));
+  const tokens = () => page.locator('#board g[data-oid]').count();
+  await to2D(page);
+  expect(await tokens()).toBe(12);
+  // plain tokens: a generic operative
+  await page.locator('#minis .miniaddbtn[data-side="0"]').click();
+  expect(await ids()).toEqual(['A1', 'A2', 'A3', 'A4', 'A5', 'A6', 'A7']);
+  expect(await tokens()).toBe(13);
+  await expect(page.locator('.hsqs').first().locator('.hsq')).toHaveCount(7);
+  await expect(page.locator('#log p').first()).toContainText('joins');
+  await page.locator('#minis .minirm[data-op="A2"]').click();
+  expect(await ids()).toEqual(['A1', 'A3', 'A4', 'A5', 'A6', 'A7']);
+  expect(await tokens()).toBe(12);
+  await page.locator('#undo').click();
+  expect(await ids()).toEqual(['A1', 'A2', 'A3', 'A4', 'A5', 'A6', 'A7']);
+  await expect(page.locator('#minis .minirm[data-op="A2"]')).toHaveCount(1);
+  // a team: its models by name, duplicates counted; adding one names it after the model
+  const team = await kz(page, () => skirmishtable.teams.find(t => new Set(t.models.map(m => m.name)).size < t.models.length));
+  await page.locator('#minis .miniteam[data-side="1"]').selectOption(team.id);
+  const groups = [...new Set(team.models.map(m => m.name))];
+  await expect(page.locator('#minis .miniaddbtn[data-side="1"]')).toHaveCount(groups.length);
+  await page.locator(`#minis .miniaddbtn[data-side="1"][data-name="${groups[0]}"]`).click();
+  const b7 = await kz(page, () => { const o = skirmishtable.world.OPS.find(o => o.id === 'B7'); return o && { name: o.name, pick: skirmishtable.minis.sides[1].picks.B7 }; });
+  expect(b7.name).toBe(groups[0]);
+  expect(team.models[b7.pick].name).toBe(groups[0]);
+  await expect(page.locator('#minis .minipick[data-op="B7"]')).toHaveValue(String(b7.pick));
+});
