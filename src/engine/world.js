@@ -29,14 +29,19 @@ export const MAPS = {
   gd2: Object.assign(GDMAPS.gd2, {group: "Gallowdark", short: "2"}),
 };
 export let TERRAIN = [], OBJECTIVES = [], DROPZONES = [], DECOR = [], OVERHEAD = [];
+// generic operative profiles (numbers we made up for the prototype); "trooper" is the one
+// operatives added from the Miniatures panel get
+export const KINDS = {
+  leader:   {apl:3, move:6, save:3, wounds:14, weapons:["srgFire","srgBlade"]},
+  marksman: {apl:2, move:6, save:4, wounds:8,  weapons:["firearm","knife"]},
+  brawler:  {apl:2, move:6, save:4, wounds:10, weapons:["blades"]},
+  trooper:  {apl:2, move:6, save:4, wounds:9,  weapons:["firearm","knife"]},
+};
 export function mkOp(id, team, name, kind, x, y) {
-  const t = {
-    leader:   {apl:3, move:6, save:3, wounds:14, weapons:["srgFire","srgBlade"]},
-    marksman: {apl:2, move:6, save:4, wounds:8,  weapons:["firearm","knife"]},
-    brawler:  {apl:2, move:6, save:4, wounds:10, weapons:["blades"]},
-  }[kind];
+  const t = KINDS[kind] || KINDS.trooper;
+  if (!KINDS[kind]) kind = "trooper";
   return {id, team, name, kind, x, y, z:0, apl:t.apl, move:t.move, save:t.save,
-          maxW:t.wounds, wounds:t.wounds, weapons:t.weapons, weapon:t.weapons[0],
+          maxW:t.wounds, wounds:t.wounds, weapons:[...t.weapons], weapon:t.weapons[0],
           order:"conceal", ready:true, ap:t.apl, used:[], alive:true};
 }
 export let OPS = [];
@@ -45,36 +50,79 @@ export function spawnFree(x, y, pts) {
   if (clearAt(x, y) < BASE_R + 0.05) return false;
   return !pts.some(p => dist(p[0], p[1], x, y) < 1.3);
 }
-export function autoSpawn(team) { // fill the drop zone from its inner edge, dodging terrain
+// Fill the drop zone from its inner edge, dodging terrain and the spots in `taken`:
+// up to n free spots.
+export function autoSpawn(team, n = 6, taken = []) {
   const dz = DROPZONES[team];
   const horizontal = dz.w >= dz.h; // wide shallow zone => long-edge deployment
-  const pts = [];
-  for (let step = 0; step < 5 && pts.length < 6; step++) {
+  const pts = [...taken], start = pts.length, full = () => pts.length - start >= n;
+  for (let step = 0; step < 5 && !full(); step++) {
     if (horizontal) {
       const y = team === 0 ? dz.y + dz.h - BASE_R - 0.2 - step*1.3 : dz.y + BASE_R + 0.2 + step*1.3;
-      for (let x = 1.2; x <= BW - 1.2 && pts.length < 6; x += 1.5)
+      for (let x = 1.2; x <= BW - 1.2 && !full(); x += 1.5)
         if (spawnFree(x, y, pts)) pts.push([x, y]);
     } else {
       const x = team === 0 ? dz.x + dz.w - BASE_R - 0.2 - step*1.3 : dz.x + BASE_R + 0.2 + step*1.3;
-      for (let y = 1.2; y <= BH - 1.2 && pts.length < 6; y += 1.5)
+      for (let y = 1.2; y <= BH - 1.2 && !full(); y += 1.5)
         if (spawnFree(x, y, pts)) pts.push([x, y]);
     }
   }
-  return pts;
+  return pts.slice(start);
 }
-export function rosterInit() {
-  const defs = [
-    ["A1",0,"Vekk","leader"],   ["A2",0,"Moss","marksman"], ["A3",0,"Harrow","marksman"],
-    ["A4",0,"Snyde","marksman"],["A5",0,"Brand","brawler"], ["A6",0,"Kole","brawler"],
-    ["B1",1,"Sarn","leader"],   ["B2",1,"Idra","marksman"], ["B3",1,"Pell","marksman"],
-    ["B4",1,"Wrex","marksman"], ["B5",1,"Grum","brawler"],  ["B6",1,"Thane","brawler"],
-  ];
-  const spawns = MAP && MAP.spawns ? MAP.spawns : [autoSpawn(0), autoSpawn(1)];
+export const DEFAULT_ROSTER = [
+  ["A1",0,"Vekk","leader"],   ["A2",0,"Moss","marksman"], ["A3",0,"Harrow","marksman"],
+  ["A4",0,"Snyde","marksman"],["A5",0,"Brand","brawler"], ["A6",0,"Kole","brawler"],
+  ["B1",1,"Sarn","leader"],   ["B2",1,"Idra","marksman"], ["B3",1,"Pell","marksman"],
+  ["B4",1,"Wrex","marksman"], ["B5",1,"Grum","brawler"],  ["B6",1,"Thane","brawler"],
+];
+// who is on the table, as rosterInit takes it: the UI passes this to a new map or a reset,
+// so a roster built in the Miniatures panel stays
+export const rosterDefs = () => OPS.length ? OPS.map(o => [o.id, o.team, o.name, o.kind]) : DEFAULT_ROSTER;
+// The starting roster, every operative fresh in its side's drop zone (default: six a side).
+export function rosterInit(defs = DEFAULT_ROSTER) {
+  const spawns = MAP && MAP.spawns ? MAP.spawns.map(s => s.slice()) : [autoSpawn(0), autoSpawn(1)];
+  for (const team of [0, 1]) {   // more operatives than the map has spots for: find more
+    const want = defs.filter(d => d[1] === team).length - spawns[team].length;
+    if (want > 0) spawns[team].push(...autoSpawn(team, want, spawns[team]));
+  }
   const idx = [0, 0];
   OPS = defs.map(([id, team, name, kind]) => {
     const p = spawns[team][idx[team]++] || [team === 0 ? 1.5 : BW - 1.5, 1.5 + idx[team] * 1.6];
     return mkOp(id, team, name, kind, p[0], p[1]);
   });
+}
+
+/* ---------- adding and removing operatives (the Miniatures panel) ---------- */
+export const SIDE_LETTER = ["A", "B"];
+export const MAX_SIDE = 30;   // operatives a side may field
+// the lowest free id on a side: A7 after A1–A6, or A3 again once A3 is gone
+export function nextOpId(team) {
+  const used = new Set(OPS.map(o => o.id));
+  for (let n = 1; n <= 99; n++) if (!used.has(SIDE_LETTER[team] + n)) return SIDE_LETTER[team] + n;
+  return null;
+}
+// A new operative for a side, named after its model ("Cultist", then "Cultist 2"…), at a
+// free spot in the side's drop zone. Null when the side is full.
+export function addOp(team, name = "Operative", kind = "trooper") {
+  if (OPS.filter(o => o.team === team).length >= MAX_SIDE) return null;
+  const id = nextOpId(team);
+  if (!id) return null;
+  const names = new Set(OPS.filter(o => o.team === team).map(o => o.name));
+  let nm = name;
+  for (let k = 2; names.has(nm); k++) nm = `${name} ${k}`;
+  const taken = OPS.filter(o => o.alive).map(o => [o.x, o.y]);
+  const p = autoSpawn(team, 1, taken)[0]
+    || [team === 0 ? DROPZONES[0].x + 1 : DROPZONES[1].x + DROPZONES[1].w - 1, BH / 2];
+  const op = mkOp(id, team, nm, kind, +p[0].toFixed(2), +p[1].toFixed(2));
+  OPS.push(op);
+  return op;
+}
+// Take an operative off the roster (not just incapacitated). A side keeps at least one.
+export function removeOp(id) {
+  const i = OPS.findIndex(o => o.id === id);
+  if (i < 0 || OPS.filter(o => o.team === OPS[i].team).length <= 1) return false;
+  OPS.splice(i, 1);
+  return true;
 }
 
 // Demo set-up: most of each side (`count` of 6) moves off its drop zone to random
@@ -110,7 +158,7 @@ export function scatterRoster(rng = Math.random, count = 4, covered = 3, near = 
 /* ---------- maps & the Tabletop Simulator importer ---------- */
 // Engine side of loading a map — no DOM: the terrain grid and its clearance map, climb
 // portals, drop zones and the starting roster. Headless tests call this directly.
-export function buildWorld(map) {
+export function buildWorld(map, roster = DEFAULT_ROSTER) {
   MAP = map;
   BW = MAP.w; BH = MAP.h;
   OBJECTIVES = JSON.parse(JSON.stringify(MAP.objectives || []));
@@ -131,7 +179,7 @@ export function buildWorld(map) {
     ? [{team:0, x:0, y:0, w:BW, h:dd}, {team:1, x:0, y:BH-dd, w:BW, h:dd}]
     : [{team:0, x:0, y:0, w:dd, h:BH}, {team:1, x:BW-dd, y:0, w:dd, h:BH}];
   buildNav();
-  rosterInit();
+  rosterInit(roster);
 }
 // Register the built-in Volkus layouts (Approved Ops 2024 and 2025) as fine maps.
 export function initMaps() {

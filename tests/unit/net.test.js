@@ -62,7 +62,9 @@ describe("cleaning what arrives", () => {
     expect(a.order).toBe("conceal");
     expect(a.used).toEqual(["dash"]);
     expect(a.weapon).toBe(local[0].weapon);
-    expect(cleanOps([sent[0]], local)).toBe(null);   // roster size must match
+    // the incoming list says who is on the table; nothing usable -> null
+    expect(cleanOps([sent[0]], local).map(o => o.id)).toEqual(["A1"]);
+    expect(cleanOps(["junk", { id: "<x>" }, null], local)).toBe(null);
   });
   it("keeps the tray and miniatures to their shapes", () => {
     const d = { tp: 1, cp: [3, 3], vp: [0, 0] };

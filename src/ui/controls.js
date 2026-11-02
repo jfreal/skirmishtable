@@ -4,7 +4,7 @@
 import { state } from '../state.js';
 import { px } from '../engine/geometry.js';
 import { FEATS } from '../engine/grid.js';
-import { BH, BW, MAP, MAPS, OPS, TERRAIN, buildWorld, scatterRoster } from '../engine/world.js';
+import { BH, BW, MAP, MAPS, OPS, TERRAIN, buildWorld, rosterDefs, scatterRoster } from '../engine/world.js';
 import { convertGallowdark, convertVolkusBag, findVolkusBags, parseBSON } from '../import/tts.js';
 import { buildStatic, renderAll, renderTray } from './board.js';
 import { HINT0, hint, logEl, logLine, svg } from './dom.js';
@@ -25,7 +25,7 @@ const playOnly = () => { if (mayPlay()) return false; hint(state.replay ? REPLAY
 const demoScatter = typeof location === "undefined" || !/[?&]deploy=zones\b/.test(location.search);
 
 export function loadMap(keyOrMap) {
-  buildWorld(typeof keyOrMap === "string" ? MAPS[keyOrMap] : keyOrMap);
+  buildWorld(typeof keyOrMap === "string" ? MAPS[keyOrMap] : keyOrMap, rosterDefs());   // the same operatives, fresh
   syncBases();                    // the new roster stands on its miniatures' bases
   if (demoScatter) scatterRoster();
   svg.setAttribute("viewBox", `0 0 ${px(BW)} ${px(BH)}`);

@@ -5,6 +5,7 @@
  */
 
 import { BASE_SIZES } from "../config.js";
+import { DEFAULT_ROSTER, KINDS, MAX_SIDE, mkOp } from "../engine/world.js";
 
 // room codes: no 0/O, 1/I/L, so they survive being read out loud
 const CODE_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
@@ -36,12 +37,20 @@ export function updateProblem(prev, next, seat) {
   if (!next || typeof next !== "object") return "empty update";
   if (next.rules !== prev.rules || next.map !== prev.map || next.mapName !== prev.mapName)
     return "only the host changes the map or rules";
-  if (!Array.isArray(next.ops) || next.ops.length !== prev.ops.length) return "roster doesn't match";
+  if (!Array.isArray(next.ops)) return "roster doesn't match";
+  // a player may add and remove their own side's operatives; the other side's stay as they are
+  const ids = next.ops.map(o => o && o.id);
+  if (new Set(ids).size !== ids.length) return "roster doesn't match";
   for (const p of prev.ops) {
     const n = next.ops.find(o => o && o.id === p.id);
-    if (!n) return "roster doesn't match";
+    if (!n) { if (p.team !== seat) return `${p.id} belongs to the other player`; continue; }
     if (p.team !== seat && FIXED_FOR_FOES.some(k => n[k] !== p[k])) return `${p.id} belongs to the other player`;
   }
+  for (const n of next.ops) {
+    if (n && prev.ops.some(p => p.id === n.id)) continue;
+    if (!n || opTeam(n.id) !== seat) return "only a side's own player adds its operatives";
+  }
+  if (next.ops.filter(o => opTeam(o && o.id) === seat).length > MAX_SIDE) return "too many operatives";
   const other = 1 - seat, ms = next.minis;
   if (!Array.isArray(ms) || JSON.stringify(ms[other]) !== JSON.stringify(prev.minis[other]))
     return "the other side's miniatures belong to the other player";
@@ -103,21 +112,34 @@ const num = (v, d) => typeof v === "number" && Number.isFinite(v) ? v : d;
 const ACTS = ["reposition", "dash", "charge", "shoot", "fight"];
 // Operatives from another browser: only the fields that change in play are taken, and
 // only in their known shapes; names, stats and weapons come from this browser's roster.
+// The incoming list says who is on the table: an operative this browser doesn't have yet
+// (added in the other browser's Miniatures panel) is made here from its id, a known kind
+// and a cleaned name. Null when nothing usable arrived.
+const OP_ID = /^[AB]\d{1,2}$/;
+export const opTeam = id => typeof id === "string" && OP_ID.test(id) ? (id[0] === "A" ? 0 : 1) : null;
+export const cleanName = (v, d) => {
+  const s = typeof v === "string" ? v.replace(/[<>"&\u0000-\u001f]/g, "").trim().slice(0, 40) : "";
+  return s || d;
+};
 export function cleanOps(incoming, local) {
-  if (!Array.isArray(incoming) || incoming.length !== local.length) return null;
-  const byId = new Map(incoming.filter(o => o && typeof o === "object").map(o => [o.id, o]));
-  return local.map(l => {
-    const o = byId.get(l.id);
-    if (!o) return { ...l };
-    return { ...l,
+  if (!Array.isArray(incoming)) return null;
+  const byId = new Map(local.map(l => [l.id, l])), seen = new Set(), out = [];
+  for (const o of incoming.slice(0, 2 * MAX_SIDE)) {
+    if (!o || typeof o !== "object" || opTeam(o.id) === null || seen.has(o.id)) continue;
+    seen.add(o.id);
+    const def = DEFAULT_ROSTER.find(d => d[0] === o.id) || [o.id, 0, o.id, "trooper"];   // links leave those out
+    const l = byId.get(o.id) || mkOp(o.id, opTeam(o.id), cleanName(o.name, def[2]),
+      Object.hasOwn(KINDS, o.kind) ? o.kind : def[3], num(o.x, 1), num(o.y, 1));
+    out.push({ ...l,
       x: num(o.x, l.x), y: num(o.y, l.y), z: Math.max(0, Math.min(8, num(o.z, 0))),
       wounds: Math.max(0, Math.min(l.maxW, num(o.wounds, l.wounds))), ap: num(o.ap, l.ap),
       order: o.order === "engage" ? "engage" : "conceal",
       ready: !!o.ready, alive: !!o.alive,
       base: BASE_SIZES.includes(o.base) ? o.base : undefined,
       weapon: l.weapons.includes(o.weapon) ? o.weapon : l.weapon,
-      used: Array.isArray(o.used) ? o.used.filter(u => ACTS.includes(u)).slice(0, 12) : [] };
-  });
+      used: Array.isArray(o.used) ? o.used.filter(u => ACTS.includes(u)).slice(0, 12) : [] });
+  }
+  return out.length ? out : null;
 }
 export function cleanTray(t, d) {
   if (!t || typeof t !== "object") return d;

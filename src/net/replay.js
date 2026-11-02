@@ -64,7 +64,8 @@ export function packReplay(rec) {
   let prevOps = start.ops, prev = rec.frames[0];
   const out = rec.frames.slice(1).map((g, j) => {
     const s = {}, ops = packGame(g).ops;
-    if (ops.length !== prevOps.length) (s.g = {}).ops = ops;
+    // the roster changed (an operative added or removed): the whole list
+    if (ops.length !== prevOps.length || ops.some((a, i) => a[0] !== prevOps[i][0] || a.length !== prevOps[i].length)) (s.g = {}).ops = ops;
     else {
       const o = [];
       ops.forEach((a, i) => {
