@@ -30,12 +30,12 @@ export function modelGroups(team) {
 export function addOperative(side, name) {
   if (!mayControl({ team: side })) return null;
   const team = teamOf(side), g = team && modelGroups(team).find(x => x.name === name);
-  snapshot();
   const op = addOp(side, g ? g.name : "Operative");
-  if (!op) {
+  if (!op) {                              // nothing changed: no undo step for it
     hint(OPS.filter(o => o.team === side).length >= MAX_SIDE ? `A side fields at most ${MAX_SIDE} operatives.` : `No room left in ${TEAMNAME[side]}'s drop zone.`);
     return null;
   }
+  OPS.pop(); snapshot(); OPS.push(op);    // the undo step: the roster from before (addOp put it last)
   if (g) {
     const used = new Set(OPS.filter(o => o.team === side && o !== op).map(o => modelIndex(o, team.models.length)));
     setPick(side, op.id, g.idx.find(i => !used.has(i)) ?? g.idx[0]);
