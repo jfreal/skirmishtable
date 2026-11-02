@@ -50,7 +50,9 @@ export function updateProblem(prev, next, seat) {
     if (n && prev.ops.some(p => p.id === n.id)) continue;
     if (!n || opTeam(n.id) !== seat) return "only a side's own player adds its operatives";
   }
-  if (next.ops.filter(o => opTeam(o && o.id) === seat).length > MAX_SIDE) return "too many operatives";
+  const mine = next.ops.filter(o => opTeam(o && o.id) === seat).length;
+  if (mine > MAX_SIDE) return "too many operatives";
+  if (!mine && prev.ops.some(p => p.team === seat)) return "a side keeps at least one operative";
   const other = 1 - seat, ms = next.minis;
   if (!Array.isArray(ms) || JSON.stringify(ms[other]) !== JSON.stringify(prev.minis[other]))
     return "the other side's miniatures belong to the other player";

@@ -120,6 +120,8 @@ describe("online: each player builds their own side", () => {
     world.buildWorld(world.MAPS.v1); world.removeOp("A2");
     expect(updateProblem(prev, game(), 1)).toMatch(/other player/);
     world.buildWorld(world.MAPS.v1);
+    const none = game(); none.ops = none.ops.filter(o => o.team !== 1);   // their own side, all gone
+    expect(updateProblem(prev, none, 1)).toMatch(/at least one/);
     const renamed = game(); renamed.ops[0].name = "Mine now";
     expect(updateProblem(prev, renamed, 1)).toMatch(/other player/);
     const dup = game(); dup.ops.push({ ...dup.ops[7] });
