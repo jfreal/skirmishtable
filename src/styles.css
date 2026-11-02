@@ -143,9 +143,9 @@ button.restricted { opacity: .5; }
 /* Miniatures panel: team per side, then each operative's model, and models to add */
 .minirow { display: flex; align-items: center; gap: 8px; margin: 6px 0; }
 .minirow select { flex: 1; min-width: 0; }
-.miniops { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 8px; margin: 0 0 8px; font-size: 12px; }
+.miniops { display: flex; flex-direction: column; gap: 4px; margin: 0 0 8px; font-size: 12px; }
 .miniop { display: flex; align-items: center; gap: 4px; min-width: 0; }
-.miniop .mid { white-space: nowrap; }
+.miniop .mid { white-space: nowrap; min-width: 6.5em; }
 .miniop .mname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .miniops select { flex: 1; min-width: 0; font-size: 12px; }
 .miniop .minirm { padding: 0 6px; font-size: 12px; }
